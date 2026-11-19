@@ -20,6 +20,8 @@ static int caps_lock;
 static volatile uint8_t scancode_buffer[KEYBOARD_BUFFER_SIZE];
 static volatile uint8_t buffer_head;
 static volatile uint8_t buffer_tail;
+static int e0_prefix;
+static int e1_prefix;
 
 static uint8_t inb(uint16_t port)
 {
@@ -137,15 +139,78 @@ static int dequeue_scancode(uint8_t *scancode)
 
 int keyboard_poll_char(char *character)
 {
+    struct keyboard_event event;
+    while (keyboard_poll_event(&event)) {
+        if (event.type == KEY_EVENT_CHAR) {
+            *character = event.character;
+            return 1;
+        }
+        if (event.type == KEY_EVENT_LEFT ||
+            event.type == KEY_EVENT_RIGHT ||
+            event.type == KEY_EVENT_UP ||
+            event.type == KEY_EVENT_DOWN ||
+            event.type == KEY_EVENT_HOME ||
+            event.type == KEY_EVENT_END ||
+            event.type == KEY_EVENT_DELETE) {
+            return 0;
+        }
+    }
+    return 0;
+}
+
+int keyboard_poll_event(struct keyboard_event *event)
+{
+    if (event == 0) {
+        return 0;
+    }
     uint8_t scancode;
 
     while (dequeue_scancode(&scancode)) {
-        if (scancode == 0xe0 || scancode == 0xe1) {
+        if (e1_prefix) {
+            if (scancode == 0xe1) {
+                continue;
+            }
+            e1_prefix = 0;
+            continue;
+        }
+        if (scancode == 0xe0) {
+            e0_prefix = 1;
+            continue;
+        }
+        if (scancode == 0xe1) {
+            e1_prefix = 1;
+            e0_prefix = 0;
             continue;
         }
 
         int released = (scancode & 0x80u) != 0;
         uint8_t key = scancode & 0x7fu;
+        if (released) {
+            if (key == 0x2a) {
+                left_shift = 0;
+            } else if (key == 0x36) {
+                right_shift = 0;
+            }
+            e0_prefix = 0;
+            continue;
+        }
+
+        if (e0_prefix) {
+            e0_prefix = 0;
+            event->character = '\0';
+            if (key == 0x4b) event->type = KEY_EVENT_LEFT;
+            else if (key == 0x4d) event->type = KEY_EVENT_RIGHT;
+            else if (key == 0x48) event->type = KEY_EVENT_UP;
+            else if (key == 0x50) event->type = KEY_EVENT_DOWN;
+            else if (key == 0x47) event->type = KEY_EVENT_HOME;
+            else if (key == 0x4f) event->type = KEY_EVENT_END;
+            else if (key == 0x53) event->type = KEY_EVENT_DELETE;
+            else event->type = KEY_EVENT_NONE;
+            if (event->type != KEY_EVENT_NONE) {
+                return 1;
+            }
+            continue;
+        }
 
         if (key == 0x2a) {
             left_shift = !released;
@@ -167,13 +232,16 @@ int keyboard_poll_char(char *character)
         char shifted = keyboard_shifted[key];
         int shift = left_shift || right_shift;
 
+        char character;
         if (plain >= 'a' && plain <= 'z') {
-            *character = (shift != caps_lock) ? shifted : plain;
+            character = (shift != caps_lock) ? shifted : plain;
         } else {
-            *character = shift ? shifted : plain;
+            character = shift ? shifted : plain;
         }
 
-        if (*character != '\0') {
+        if (character != '\0') {
+            event->type = KEY_EVENT_CHAR;
+            event->character = character;
             return 1;
         }
     }

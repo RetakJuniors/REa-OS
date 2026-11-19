@@ -1,4 +1,5 @@
 #include "memory.h"
+#include "heap.h"
 #include "stat.h"
 
 #include <stdio.h>
@@ -33,6 +34,13 @@ int memory_get_stats(struct memory_stats *stats)
     return 1;
 }
 
+int heap_get_stats(struct heap_stats *stats)
+{
+    stats->mapped_bytes = 4u * 1024u * 1024u;
+    stats->used_bytes = 1u * 1024u * 1024u;
+    return 1;
+}
+
 static int check(const char *arguments, const char *expected)
 {
     output_length = 0;
@@ -51,10 +59,12 @@ int main(void)
     int failures = 0;
     failures += check("-cpu", "CPU: 12%\n");
     failures += check("-ram",
-                      "RAM: 45 MB / 512 MB (kullanilan / toplam, 467 MB bos)\n");
+                      "RAM: 45 MB / 512 MB (kullanilan / toplam, 467 MB bos)\n"
+                      "Heap: 1 MB used / 4 MB mapped\n");
     failures += check("all",
                       "CPU: 12%\n"
-                      "RAM: 45 MB / 512 MB (kullanilan / toplam, 467 MB bos)\n");
+                      "RAM: 45 MB / 512 MB (kullanilan / toplam, 467 MB bos)\n"
+                      "Heap: 1 MB used / 4 MB mapped\n");
     failures += check("", "Usage: stat -cpu | -ram | all\n");
     failures += check("-x", "Usage: stat -cpu | -ram | all\n");
     failures += check("-cpu extra", "Usage: stat -cpu | -ram | all\n");

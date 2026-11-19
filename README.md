@@ -1,6 +1,6 @@
 # REA OS - v0.0.4 alpha
 
-REA OS, x86_64 icin sifirdan yazilan egitim amacli bir cekirdek projesidir.
+REA OS v0.0.7a, x86_64 icin sifirdan yazilan egitim amacli bir cekirdek projesidir.
 Limine BIOS/UEFI hibrit ISO'yu acar; cekirdek framebuffer'a metin cizer, PS/2
 klavye ve fareyi kesmelerle okur, ekranda fare imleci gosterir, `print`
 komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir.
@@ -34,11 +34,14 @@ komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir.
 |   |-- memory.h
 |   |-- mouse.h
 |   |-- paging.h
+|   |-- ramfs.h
 |   |-- pic.h
 |   |-- pit.h
+|   |-- rtc.h
 |   |-- serial.h
 |   |-- shell.h
 |   |-- stat.h
+|   |-- system.h
 |   |-- timer.h
 |   `-- util.h
 |-- src/
@@ -59,11 +62,14 @@ komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir.
 |   |-- memory.c
 |   |-- mouse.c
 |   |-- paging.c
+|   |-- ramfs.c
 |   |-- pic.c
 |   |-- pit.c
+|   |-- rtc.c
 |   |-- serial.c
 |   |-- shell.c
 |   |-- stat.c
+|   |-- system.c
 |   |-- timer.c
 |   `-- util.c
 `-- tests/
@@ -90,6 +96,9 @@ ile secilir; secenekler ayri derleme klasorlerinde tutulur.
 | `src/gdt.c` | Kernel kod/veri bolumlerini, TSS'yi ve double-fault yiginini kurar. |
 | `src/paging.c` | Limine'in etkin 4/5 seviyeli sayfa tablolarinda 4 KiB eslemeleri olusturur, kaldirir ve cevirir. |
 | `src/heap.c` | Sayfa ayiricidan heap sayfalari alir; `kmalloc`/`kfree` ile bloklari boler ve birlestirir. |
+| `src/ramfs.c` | Bellek ici dosya/dizin agacini, yollarini, dosya veri depolamasini ve 8 MiB toplam sinirini yonetir. |
+| `src/rtc.c` | CMOS RTC registerlarini yalnizca okuyarak BCD/binary ve 12/24 saat formatini cevirir. |
+| `src/system.c` | CPUID CPU/hypervisor tespiti, uptime/ekran/RAM bilgisi ve sanal makine reboot/poweroff islerini saglar. |
 | `src/idt.c` | 256 IDT girisini kurar, istisnalari raporlar ve IRQ'lari ilgili surucuye yollar. |
 | `src/isr.S` | Istisna/IRQ girislerini, yazmac kaydetme-kurtarmayi ve GDT'yi yukleme kodunu saglar. |
 | `src/pic.c` | 8259 PIC'i 32-47 vektorlerine tasir, IRQ maskelerini ve EOI sinyallerini yonetir. |
@@ -325,7 +334,24 @@ icin VirtualBox Host tusunu (varsayilan olarak sag Ctrl) kullanin.
 |---|---|---|
 | `print` | `print "yazi"` | Tirnak icindeki metni yazar. Tirnak yoksa/kusurluysa kisa hata mesaji verir. |
 | `stat` | `stat -cpu`, `stat -ram`, `stat all` | CPU yuzdesini, usable RAM toplam/kullanilan/bos miktarini veya ikisini birlikte gosterir. |
+| `ls` | `ls [yol]` | Ada gore dosya/dizin listesini boyutlariyla gosterir. |
+| `cd` | `cd [yol]` | Dizin degistirir; argumansiz komut kok dizine gider. |
+| `pwd` | `pwd` | Gecerli ramfs dizinini yazdirir. |
+| `mkdir` | `mkdir <yol>` | Tek seviye dizin olusturur. |
+| `rm` | `rm <yol>` | Dosya veya bos dizini siler. |
+| `cat` | `cat <dosya>` | Dosya icerigini yazdirir. |
+| `wr` | `wr <dosya> "metin"` | Dosya olusturur veya ustune yazar. |
+| `ap` | `ap <dosya> "metin"` | Dosyanin sonuna metin ekler. |
+| `cp` | `cp <kaynak> <hedef>` | Dosya kopyalar. |
+| `mv` | `mv <kaynak> <hedef>` | Dosya/dizin tasir veya yeniden adlandirir. |
+| `help` | `help` | Komut tablosundan tum komutlari listeler. |
+| `cls` | `cls` | Ekrani temizler. |
+| `ver` | `ver` | REA OS surumunu yazdirir. |
+| `sys` | `sys` | CPU, hypervisor, RAM, ekran, uptime ve surum bilgisi verir. |
+| `up` | `up` | Calisma suresini saat/dakika/saniye olarak verir. |
+| `dt` | `dt` | CMOS RTC'den tarih ve saati okur. |
+| `rb` | `rb` | 0x64 reset portuna; olmazsa triple fault'a dener. |
+| `off` | `off` | Desteklenen VirtualBox/QEMU hipervisorunda sanal makineyi kapatir. |
 
-Bunun disindaki her komut `Unknown command` yazar. `stat` icin gecersiz secenek
-kisa kullanim satiri gosterir. `help`, `clear`, `ls`, `cd`, `echo` veya baska
-bir komut bulunmaz.
+Bilinmeyen her komut `Unknown command` yazar. `stat` gecersiz kullanimi
+kisa kullanim satiri gosterir.

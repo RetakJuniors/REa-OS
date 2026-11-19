@@ -51,9 +51,9 @@ void kmain(void)
 
     for (;;) {
         mouse_poll();
-        char character;
-        while (keyboard_poll_char(&character)) {
-            shell_handle_char(character);
+        struct keyboard_event event;
+        while (keyboard_poll_event(&event)) {
+            shell_handle_keyboard_event(&event);
         }
         shell_cursor_update();
 

@@ -25,15 +25,15 @@ endif
 
 CFLAGS := -std=gnu11 -O2 -Wall -Wextra -Werror \
 	-ffreestanding -fno-stack-protector -fno-pic -fno-pie \
-	-m64 -mno-red-zone -mno-mmx -mno-sse -mno-sse2 \
+	-m64 -mno-red-zone -mgeneral-regs-only -mno-mmx -mno-sse -mno-sse2 \
 	-mcmodel=kernel -Iinclude $(LAYOUT_DEFINE)
 LDFLAGS := -nostdlib -static -no-pie -Wl,--build-id=none \
 	-Wl,-T,linker.ld -Wl,-z,max-page-size=0x1000
 SOURCES := src/boot.c src/console.c src/cursor.c src/cursor_data.c \
 	src/font.c src/gdt.c src/heap.c src/idt.c src/kernel.c src/mouse.c \
 	src/keyboard.c src/keyboard_layout.c src/memory.c src/serial.c \
-	src/paging.c src/pic.c src/pit.c src/shell.c src/stat.c src/timer.c \
-	src/util.c
+	src/paging.c src/pic.c src/pit.c src/ramfs.c src/rtc.c src/shell.c \
+	src/stat.c src/system.c src/timer.c src/util.c
 OBJECTS := $(SOURCES:src/%.c=$(BUILD_DIR)/%.o)
 ASM_SOURCES := src/isr.S
 ASM_OBJECTS := $(ASM_SOURCES:src/%.S=$(BUILD_DIR)/%.o)
@@ -91,7 +91,8 @@ iso: $(ISO)
 
 test: src/cursor_data.c | $(BUILD_DIR)
 	$(CC) -std=c11 -Wall -Wextra -Werror -Iinclude -Isrc \
-		tests/shell_test.c src/shell.c -o $(BUILD_DIR)/shell_test
+		tests/shell_test.c src/shell.c src/ramfs.c src/util.c \
+		-o $(BUILD_DIR)/shell_test
 	$(BUILD_DIR)/shell_test
 	$(CC) -std=c11 -Wall -Wextra -Werror -Iinclude -Isrc \
 		tests/font_test.c src/font.c -o $(BUILD_DIR)/font_test
@@ -121,6 +122,10 @@ test: src/cursor_data.c | $(BUILD_DIR)
 	$(CC) -std=c11 -Wall -Wextra -Werror -Iinclude \
 		tests/heap_test.c -o $(BUILD_DIR)/heap_test
 	$(BUILD_DIR)/heap_test
+	$(CC) -std=c11 -Wall -Wextra -Werror -Iinclude -Isrc \
+		tests/ramfs_test.c src/ramfs.c src/util.c \
+		-o $(BUILD_DIR)/ramfs_test
+	$(BUILD_DIR)/ramfs_test
 
 clean:
 	rm -rf build rea-os.iso rea-os-us.iso

@@ -48,6 +48,14 @@ int paging_map_page(uintptr_t virtual_address, uint64_t physical_address,
     return 1;
 }
 
+int memory_get_stats(struct memory_stats *stats)
+{
+    stats->total_bytes = 64u * 1024u * 1024u;
+    stats->used_bytes = 0;
+    stats->free_bytes = 64u * 1024u * 1024u;
+    return 1;
+}
+
 void *memory_alloc_page(void)
 {
     if (allocated_frames == 8) {

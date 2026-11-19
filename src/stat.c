@@ -1,6 +1,7 @@
 #include "stat.h"
 
 #include "console.h"
+#include "heap.h"
 #include "memory.h"
 #include "serial.h"
 #include "timer.h"
@@ -72,6 +73,15 @@ static void print_ram(void)
     write_both(" MB (kullanilan / toplam, ");
     write_number(stats.free_bytes / mb);
     write_both(" MB bos)\n");
+
+    struct heap_stats heap;
+    if (heap_get_stats(&heap)) {
+        write_both("Heap: ");
+        write_number(heap.used_bytes / mb);
+        write_both(" MB used / ");
+        write_number(heap.mapped_bytes / mb);
+        write_both(" MB mapped\n");
+    }
 }
 
 void stat_command(const char *arguments)

@@ -10,7 +10,7 @@
 #endif
 
 #define HEAP_BASE REA_HEAP_BASE
-#define HEAP_MAX_PAGES 4096u
+#define HEAP_LIMIT_BYTES (32u * 1024u * 1024u)
 #define HEAP_BLOCK_MAGIC 0x5245414845415042ull
 #define HEAP_ALIGNMENT 16u
 
@@ -25,7 +25,9 @@ struct heap_block {
 static struct heap_block *first_block;
 static struct heap_block *last_block;
 static size_t mapped_pages;
+static size_t max_pages;
 static int initialized;
+static uint64_t allocated_bytes;
 
 static int align_size(size_t size, size_t *aligned)
 {
@@ -54,7 +56,7 @@ static void merge_with_next(struct heap_block *block)
 
 static int grow_heap(void)
 {
-    if (mapped_pages >= HEAP_MAX_PAGES) {
+    if (mapped_pages >= max_pages) {
         return 0;
     }
 
@@ -108,6 +110,16 @@ int heap_init(void)
     first_block = 0;
     last_block = 0;
     mapped_pages = 0;
+    max_pages = HEAP_LIMIT_BYTES / PAGING_PAGE_SIZE;
+    struct memory_stats memory;
+    if (memory_get_stats(&memory)) {
+        uint64_t quarter = memory.free_bytes / 4u;
+        uint64_t quarter_pages = quarter / PAGING_PAGE_SIZE;
+        if (quarter_pages < max_pages) {
+            max_pages = (size_t)quarter_pages;
+        }
+    }
+    allocated_bytes = 0;
     if (!paging_is_active()) {
         return 0;
     }
@@ -154,6 +166,7 @@ void *kmalloc(size_t size)
                 block->size = allocation_size;
             }
             block->free = 0;
+            allocated_bytes += block->size;
             return block + 1;
         }
 
@@ -161,6 +174,22 @@ void *kmalloc(size_t size)
             return 0;
         }
     }
+}
+
+void *kcalloc(size_t count, size_t size)
+{
+    if (count != 0 && size > SIZE_MAX / count) {
+        return 0;
+    }
+    size_t total = count * size;
+    void *pointer = kmalloc(total);
+    if (pointer != 0) {
+        uint8_t *bytes = pointer;
+        for (size_t index = 0; index < total; ++index) {
+            bytes[index] = 0;
+        }
+    }
+    return pointer;
 }
 
 void kfree(void *pointer)
@@ -184,6 +213,11 @@ void kfree(void *pointer)
             return;
         }
 
+        if (candidate->size <= allocated_bytes) {
+            allocated_bytes -= candidate->size;
+        } else {
+            allocated_bytes = 0;
+        }
         candidate->free = 1;
         if (candidate->previous != 0 && candidate->previous->free) {
             candidate = candidate->previous;
@@ -192,4 +226,16 @@ void kfree(void *pointer)
         merge_with_next(candidate);
         return;
     }
+}
+
+int heap_get_stats(struct heap_stats *stats)
+{
+    if (stats == 0) {
+        return 0;
+    }
+    stats->mapped_bytes = initialized
+                              ? mapped_pages * PAGING_PAGE_SIZE
+                              : 0;
+    stats->used_bytes = allocated_bytes;
+    return initialized;
 }

@@ -302,6 +302,36 @@ void console_get_cursor_position(size_t *x, size_t *y)
     }
 }
 
+void console_set_cursor_position(size_t x, size_t y)
+{
+    if (framebuffer == 0) {
+        return;
+    }
+    cursor_begin_console_update();
+    if (x >= framebuffer->width) {
+        x = framebuffer->width - 1u;
+    }
+    if (y >= framebuffer->height) {
+        y = framebuffer->height - font_line_height();
+    }
+    cursor_x = x;
+    cursor_y = y;
+    cursor_end_console_update();
+}
+
+void console_clear_line_from(size_t y, size_t x)
+{
+    if (framebuffer == 0) {
+        return;
+    }
+    cursor_begin_console_update();
+    if (y < framebuffer->height && x < framebuffer->width) {
+        fill_rect(x, y, framebuffer->width - x,
+                  font_line_height(), COLOR_BLACK);
+    }
+    cursor_end_console_update();
+}
+
 void console_erase_input(size_t x, size_t y, uint16_t advance)
 {
     cursor_begin_console_update();

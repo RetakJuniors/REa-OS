@@ -1,9 +1,13 @@
 #include "shell.h"
 #include "font.h"
+#include "heap.h"
+#include "rtc.h"
+#include "system.h"
 
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 static unsigned int stat_calls;
 static unsigned int cursor_show_calls;
@@ -68,8 +72,30 @@ void console_write_n(const char *text, size_t length)
 
 void console_get_cursor_position(size_t *x, size_t *y)
 {
-    *x = test_cursor_x;
-    *y = test_cursor_y;
+    if (x != 0) *x = test_cursor_x;
+    if (y != 0) *y = test_cursor_y;
+}
+
+void console_set_cursor_position(size_t x, size_t y)
+{
+    test_cursor_x = x;
+    test_cursor_y = y;
+}
+
+void console_clear_line_from(size_t y, size_t x)
+{
+    (void)y;
+    screen_length = 0;
+    screen_output[0] = '\0';
+    test_cursor_x = x;
+}
+
+void console_clear(void)
+{
+    screen_length = 0;
+    screen_output[0] = '\0';
+    test_cursor_x = 0;
+    test_cursor_y = 0;
 }
 
 void console_erase_input(size_t x, size_t y, uint16_t advance)
@@ -106,6 +132,54 @@ void serial_write(const char *text)
 uint64_t timer_ticks(void)
 {
     return fake_timer_ticks;
+}
+
+void *kmalloc(size_t size)
+{
+    return malloc(size);
+}
+
+void *kcalloc(size_t count, size_t size)
+{
+    return calloc(count, size);
+}
+
+void kfree(void *pointer)
+{
+    free(pointer);
+}
+
+int heap_get_stats(struct heap_stats *stats)
+{
+    (void)stats;
+    return 0;
+}
+
+int rtc_read(struct rtc_datetime *datetime)
+{
+    (void)datetime;
+    return 0;
+}
+
+size_t system_format(char *buffer, size_t capacity)
+{
+    (void)buffer;
+    (void)capacity;
+    return 0;
+}
+
+void system_reboot(void)
+{
+}
+
+int system_hypervisor(void)
+{
+    return 0;
+}
+
+int system_poweroff(void)
+{
+    return 0;
 }
 
 static int run_case(const char *name, const char *input, const char *expected)
@@ -165,7 +239,26 @@ int main(void)
     failures += run_case(
         "unknown command",
         "help",
-        "/> help\nUnknown command\n/> ");
+        "/> help\nprint print \"text\" - Print quoted text\n"
+        "stat stat -cpu | -ram | all - Show CPU and RAM status\n"
+        "ls ls [path] - List files and directories\n"
+        "cd cd [path] - Change directory\n"
+        "pwd pwd - Print current directory\n"
+        "mkdir mkdir <path> - Create directory\n"
+        "rm rm <path> - Remove file or empty directory\n"
+        "cat cat <file> - Print file contents\n"
+        "wr wr <file> \"text\" - Write text and newline\n"
+        "ap ap <file> \"text\" - Append text and newline\n"
+        "cp cp <source> <target> - Copy file\n"
+        "mv mv <source> <target> - Move or rename\n"
+        "help help - List commands\n"
+        "cls cls - Clear screen\n"
+        "ver ver - Print REA OS version\n"
+        "sys sys - Print system information\n"
+        "up up - Print uptime\n"
+        "dt dt - Print RTC date and time\n"
+        "rb rb - Reboot virtual machine\n"
+        "off off - Power off supported hypervisor\n/> ");
     failures += run_case(
         "missing quote",
         "print \"hello",
