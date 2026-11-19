@@ -1,6 +1,7 @@
 #include "console.h"
 
 #include "boot.h"
+#include "cursor.h"
 #include "font.h"
 #include "serial.h"
 #include "util.h"
@@ -24,6 +25,26 @@ static uint32_t scale_channel(uint8_t value, uint8_t mask_size)
 
     uint32_t maximum = (1u << mask_size) - 1;
     return ((uint32_t)value * maximum + 127) / 255;
+}
+
+static void invert_pixel(size_t x, size_t y)
+{
+    if (x >= framebuffer->width || y >= framebuffer->height) {
+        return;
+    }
+
+    uint32_t red_mask =
+        ((1u << framebuffer->red_mask_size) - 1) <<
+        framebuffer->red_mask_shift;
+    uint32_t green_mask =
+        ((1u << framebuffer->green_mask_size) - 1) <<
+        framebuffer->green_mask_shift;
+    uint32_t blue_mask =
+        ((1u << framebuffer->blue_mask_size) - 1) <<
+        framebuffer->blue_mask_shift;
+    uint8_t *pixel = (uint8_t *)framebuffer->address +
+                     y * framebuffer->pitch + x * 4;
+    *(uint32_t *)pixel ^= red_mask | green_mask | blue_mask;
 }
 
 static void put_pixel(size_t x, size_t y, uint32_t color, uint8_t alpha)
@@ -208,9 +229,11 @@ void console_init(void)
 
 void console_clear(void)
 {
+    cursor_begin_console_update();
     fill_rect(0, 0, framebuffer->width, framebuffer->height, COLOR_BLACK);
     cursor_x = 0;
     cursor_y = 0;
+    cursor_end_console_update();
 }
 
 void console_putc(char character)
@@ -219,17 +242,21 @@ void console_putc(char character)
         return;
     }
     if (character == '\n') {
+        cursor_begin_console_update();
         new_line();
+        cursor_end_console_update();
         return;
     }
     if (character == '\b') {
         return;
     }
+    cursor_begin_console_update();
     if ((uint8_t)character < 0x80) {
         draw_glyph((uint8_t)character);
     } else {
         draw_glyph('?');
     }
+    cursor_end_console_update();
 }
 
 void console_write_n(const char *text, size_t length)
@@ -237,6 +264,7 @@ void console_write_n(const char *text, size_t length)
     const uint8_t *bytes = (const uint8_t *)text;
     size_t offset = 0;
 
+    cursor_begin_console_update();
     while (offset < length) {
         uint32_t codepoint;
         size_t consumed;
@@ -252,6 +280,7 @@ void console_write_n(const char *text, size_t length)
         }
         offset += consumed;
     }
+    cursor_end_console_update();
 }
 
 void console_write(const char *text)
@@ -275,24 +304,38 @@ void console_get_cursor_position(size_t *x, size_t *y)
 
 void console_erase_input(size_t x, size_t y, uint16_t advance)
 {
+    cursor_begin_console_update();
     size_t erase_width = advance == 0 ? 1 : advance;
     fill_rect(x, y, erase_width, font_line_height(), COLOR_BLACK);
     cursor_x = x;
     cursor_y = y;
+    cursor_end_console_update();
 }
 
 void console_cursor_show(void)
 {
     if (!cursor_visible) {
-        fill_rect(cursor_x, cursor_y, CURSOR_WIDTH, font_line_height(), COLOR_TEXT);
+        cursor_begin_console_update();
+        for (size_t y = 0; y < font_line_height(); ++y) {
+            for (size_t x = 0; x < CURSOR_WIDTH; ++x) {
+                invert_pixel(cursor_x + x, cursor_y + y);
+            }
+        }
         cursor_visible = 1;
+        cursor_end_console_update();
     }
 }
 
 void console_cursor_hide(void)
 {
     if (cursor_visible) {
-        fill_rect(cursor_x, cursor_y, CURSOR_WIDTH, font_line_height(), COLOR_BLACK);
+        cursor_begin_console_update();
+        for (size_t y = 0; y < font_line_height(); ++y) {
+            for (size_t x = 0; x < CURSOR_WIDTH; ++x) {
+                invert_pixel(cursor_x + x, cursor_y + y);
+            }
+        }
         cursor_visible = 0;
+        cursor_end_console_update();
     }
 }

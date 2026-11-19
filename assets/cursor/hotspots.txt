@@ -1,0 +1,17 @@
+# ad x y   (64x64 imlec tuvalinde tiklama noktasi, sol ust = 0,0)
+arrow 22 1
+help 18 1
+arrow_no 16 1
+arrow_alt 17 2
+resize_h 32 32
+resize_v 32 32
+resize_nesw 32 32
+resize_nwse 32 32
+move 32 32
+progress 16 4
+busy 32 32
+text 32 32
+hand_open 32 32
+pointer 27 1
+hand_grab 32 32
+not_allowed 32 32

@@ -112,6 +112,11 @@ void timer_wait_for_interrupt(void)
     cpu_idle = 0;
 }
 
+uint64_t timer_ticks(void)
+{
+    return ticks;
+}
+
 uint64_t timer_cpu_usage_percent(void)
 {
     uint64_t total = 0;

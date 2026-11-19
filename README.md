@@ -1,8 +1,9 @@
-# REA OS - Adim 2 (Inter Font)
+# REA OS - v0.0.4 alpha
 
 REA OS, x86_64 icin sifirdan yazilan egitim amacli bir cekirdek projesidir.
 Limine BIOS/UEFI hibrit ISO'yu acar; cekirdek framebuffer'a metin cizer, PS/2
-klavyeyi okur, `print` komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir.
+klavye ve fareyi polling ile okur, ekranda fare imleci gosterir, `print`
+komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir.
 
 > Bu proje deneyseldir. Sanal makinede ve sanal disksiz kullanin. Cekirdek
 > disk, ag ve USB surucusu icermez; diske yazma kodu yoktur.
@@ -19,11 +20,16 @@ klavyeyi okur, `print` komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir
 |-- fonts/
 |   |-- Inter_18pt-Regular.ttf
 |   `-- OFL.txt
+|-- assets/
+|   `-- cursors/
+|       `-- *.png
 |-- include/
 |   |-- boot.h
 |   |-- console.h
+|   |-- cursor.h
 |   |-- keyboard.h
 |   |-- memory.h
+|   |-- mouse.h
 |   |-- serial.h
 |   |-- shell.h
 |   |-- stat.h
@@ -32,6 +38,9 @@ klavyeyi okur, `print` komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir
 |-- src/
 |   |-- boot.c
 |   |-- console.c
+|   |-- cursor.c
+|   |-- cursor_data.c
+|   |-- cursor_data.h
 |   |-- font.c
 |   |-- font.h
 |   |-- interrupts.S
@@ -39,6 +48,7 @@ klavyeyi okur, `print` komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir
 |   |-- keyboard.c
 |   |-- keyboard_layout.c
 |   |-- memory.c
+|   |-- mouse.c
 |   |-- serial.c
 |   |-- shell.c
 |   |-- stat.c
@@ -52,6 +62,7 @@ klavyeyi okur, `print` komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir
 |   |-- stat_test.c
 |   `-- shell_test.c
 `-- tools/
+    |-- png2c.py
     `-- ttf2c.py
 ```
 
@@ -63,12 +74,16 @@ ile secilir; secenekler ayri derleme klasorlerinde tutulur.
 
 | Dosya | Aciklama |
 |---|---|
-| `src/kernel.c` | Framebuffer, RAM yoneticisi ve zamanlayiciyi baslatir; klavyeyi okur. |
+| `src/kernel.c` | Framebuffer, RAM yoneticisi, zamanlayici ve fareyi baslatir; klavye/fare polling dongusunu calistirir. |
 | `src/boot.c` | Limine framebuffer, memory map ve HHDM yanitlarini alir. |
 | `tools/ttf2c.py` | Pillow ile TTF gliflerini build-time alpha piksel tablosuna cevirir. |
 | `src/font.c` | Betigin olusturdugu salt okunur Inter glifleri ve ikili aramayi tutar. |
 | `src/font.h` | Glif boyutlari, bearing, advance ve font metriklerini bildirir. |
 | `src/console.c` | UTF-8 metni alpha karistirmayla cizer; orantili satir ve imleci yonetir. |
+| `src/cursor.c` | Alpha ARGB fare okunu cizer; fare hareketinde eski pikselleri geri yukler. |
+| `src/cursor_data.c` | PNG betiginin olusturdugu salt okunur fare imleci piksel tablosu. |
+| `tools/png2c.py` | PNG fare imleclerini derleme oncesi ARGB C tablosuna cevirir. |
+| `src/mouse.c` | i8042'in yardimci portundan PS/2 fare paketlerini polling ile okur. |
 | `src/keyboard.c` | PS/2 portlarindan kesmesiz, polling klavye okumasini yapar. |
 | `src/keyboard_layout.c` | Set-1 tarama kodlarini secilen Turkce Q veya US QWERTY duzenine cevirir. |
 | `src/memory.c` | Limine usable RAM bolgelerini bitmap tabanli fiziksel sayfa yoneticisine aktarir. |
@@ -86,19 +101,26 @@ ile secilir; secenekler ayri derleme klasorlerinde tutulur.
 ### Onemli kod akisi
 
 1. `kmain()` framebuffer'i, memory map tabanli sayfa yoneticisini ve PIT'i baslatir.
+   PS/2 fareyi i8042 yardimci portundan baslatir; klavye ve fare verisini ayni
+   ana dongude polling ile ayirir.
 2. Klavye girdisi yokken cekirdek `hlt` ile bekler; PIT kesmesi en gec 10 ms sonra uyandirip klavye polling'i surdurur.
 3. Tus haritasi tarama kodunu ASCII karaktere cevirir; Shift ve Caps Lock uygulanir.
 4. Enter satiri komut tablosuna gider. Tabloda yalnizca `print` ve `stat` vardir.
 5. `stat -cpu` son 5 saniyedeki PIT kesmelerinde cekirdegin `hlt` beklemesinde olup olmadigina gore CPU kullanimini yaklasik hesaplar.
 6. `stat -ram`, memory map'teki tam usable sayfalari ve bitmap allocator durumunu raporlar.
 
+Komut isteminin sonunda yaklasik her 500 ms'de bir gorunup kaybolan dikey blok
+vardir. PIT'in 100 Hz tikleri kullanilir; baska bir zamanlayici veya komut
+eklenmez. Fare oku ekran ortasinda baslar, hotspot'a gore yerlestirilir ve
+hareket ettikce altindaki pikselleri saklayip geri yukler. Sol, sag ve orta
+dugme durumu bellekte tutulur; tiklama davranisi yoktur.
+
 Inter TTF dosyasi yalnizca derleme oncesinde Python betigiyle okunur. Cekirdek
 TTF ayrıştırma yapmaz: gliflerin alpha piksellerini, olculerini ve taban cizgisi
 bilgilerini salt okunur C dizilerinden alir. Ekran ciktilari UTF-8 olarak
 cozulur; bozuk UTF-8 dizisi `?` olarak cizilir. Glifler orantili yerlestirilir
-ve ekran fontun satir yuksekligi kadar kaydirilir. Komut isteminin sonunda
-yanip sonmeyen dikey blok imlec bulunur; Backspace son girilen glifin advance
-degeri kadar geri gider.
+ve ekran fontun satir yuksekligi kadar kaydirilir. Komut istemi imleci yanip
+soner; Backspace son girilen glifin advance degeri kadar geri gider.
 
 Varsayilan Turkce Q duzenindeki `Shift+2` duz tirnak (`"`) uretir. `US
 QWERTY` secenegi standart ABD tus isaretlerini kullanir; bu duzende tirnak
@@ -157,8 +179,25 @@ Proje klasorunde:
 
 ```sh
 python3 tools/ttf2c.py --font fonts/Inter_18pt-Regular.ttf --size 16
+python3 tools/png2c.py
 make
 ```
+
+Fare gorsellerini `assets/cursors/` altina PNG olarak koyun (`assets/cursor/`
+klasor adini da otomatik tanir). `hotspots.txt` varsa her satirdaki dosya adi,
+x ve y degerleri de kullanilir. PNG betigi tum
+gorselleri `src/cursor_data.c` ve `.h` dosyalarina cevirir; dosya adinda
+`arrow`, `pointer`, `normal` veya `default` gecen ilk gorseli varsayilan ok
+secer. Uygun isim yoksa alfabetik ilk dosyayi kullanir ve seri/terminal
+ciktisinda bildirir. Hotspot varsayilan olarak `(0,0)`'dir; degistirmek icin:
+
+```sh
+python3 tools/png2c.py --hotspot arrow.png:3,2
+```
+
+Komut secenegini degistirdiginiz dosya adiyla kullanin. Betik sadece PNG
+okur; PNG'de alpha yoksa, goruntu 64x64'ten buyukse veya baska dosya turleri
+bulursa acik uyari verir. SVG, CUR, ICO ve diger formatlar desteklenmez.
 
 Betik varsayilan olarak `fonts/Inter-Regular.ttf` dosyasini arar; bu depodaki
 fontun gercek adi `Inter_18pt-Regular.ttf` oldugundan komutta `--font` verilir.
@@ -185,7 +224,7 @@ make clean
 make
 ```
 
-Kabuk, ASCII bitmap fontu, stat ciktisi ve fiziksel sayfa ayiricisini sinamak icin:
+Kabuk, font, console, cursor, stat ciktisi ve fiziksel sayfa ayiricisini sinamak icin:
 
 ```sh
 make test
@@ -215,7 +254,8 @@ make test
 
 VirtualBox'ta klavye yakalamak icin VM penceresine tiklayin. VM pencere
 icerisindeyken ana makine klavye duzeni degil, konuk tus tarama kodlari
-kullanilir.
+kullanilir. Fareyi yakalamak icin pencere icine tiklayin; serbest birakmak
+icin VirtualBox Host tusunu (varsayilan olarak sag Ctrl) kullanin.
 
 ## Sik gorulen sorunlar
 
@@ -228,6 +268,10 @@ kullanilir.
 | ISO acilmiyor | VM turunu 64-bit Other yapin; once EFI kapali BIOS, sonra EFI acik UEFI deneyin. |
 | Siyah ekran, istem yok | VirtualBox ekran belleğini 16 MB yapin; makineyi tamamen kapatip tekrar acin. |
 | Klavye yazmiyor | VM penceresine tiklayip tuslari tekrar deneyin; VirtualBox'in klavyeyi yakaladigini kontrol edin. |
+| Fare oku hareket etmiyor | VirtualBox penceresine tiklayip fareyi yakalayin; i8042 uyumlu PS/2 fare aygitinin etkin oldugunu kontrol edin. Seri cikti `PS/2 mouse initialization failed` ise VM'yi kapatip yeniden baslatin. |
+| `assets/cursors` icinde PNG yok | PNG gorsellerini bu klasore koyup `python3 tools/png2c.py` komutunu yeniden calistirin. |
+| PNG disi cursor formati uyarisi | Betik yalnizca PNG okur; AI, EPS, JPEG, SVG, CUR veya ICO dosyalari tabloya alinmaz. PNG surumlerini ekleyin. |
+| PNG alpha/boyut uyarisi | Saydamlik kanali olmayan gorsel opak olur. 64x64'ten buyuk gorseller calismaya devam eder ancak uyarilir. |
 | `print` bilinmiyor | Komutu ASCII kucuk harfle yazin: `print "merhaba"`. |
 | `Error: expected quoted text` | Metni iki duz cift tirnak arasina alin: `print "merhaba"`. |
 | `No module named PIL` | Ubuntu/WSL icin `sudo apt install python3-pil`; diger sistemlerde `python3 -m pip install Pillow`. |

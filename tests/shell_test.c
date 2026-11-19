@@ -1,10 +1,14 @@
 #include "shell.h"
 #include "font.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
 static unsigned int stat_calls;
+static unsigned int cursor_show_calls;
+static unsigned int cursor_hide_calls;
+static uint64_t fake_timer_ticks;
 static size_t test_cursor_x;
 static size_t test_cursor_y;
 
@@ -80,10 +84,12 @@ void console_erase_input(size_t x, size_t y, uint16_t advance)
 
 void console_cursor_show(void)
 {
+    ++cursor_show_calls;
 }
 
 void console_cursor_hide(void)
 {
+    ++cursor_hide_calls;
 }
 
 const struct glyph *font_get_glyph(uint32_t codepoint)
@@ -97,8 +103,14 @@ void serial_write(const char *text)
     (void)text;
 }
 
+uint64_t timer_ticks(void)
+{
+    return fake_timer_ticks;
+}
+
 static int run_case(const char *name, const char *input, const char *expected)
 {
+    fake_timer_ticks = 0;
     screen_length = 0;
     screen_output[0] = '\0';
     test_cursor_x = 0;
@@ -122,6 +134,29 @@ static int run_case(const char *name, const char *input, const char *expected)
 int main(void)
 {
     int failures = 0;
+
+    fake_timer_ticks = 0;
+    cursor_show_calls = 0;
+    cursor_hide_calls = 0;
+    shell_init();
+    fake_timer_ticks = 49;
+    shell_cursor_update();
+    if (cursor_show_calls != 1 || cursor_hide_calls != 0) {
+        fputs("Prompt cursor blinked before its interval\n", stderr);
+        ++failures;
+    }
+    fake_timer_ticks = 50;
+    shell_cursor_update();
+    if (cursor_hide_calls != 1) {
+        fputs("Prompt cursor did not hide at its blink interval\n", stderr);
+        ++failures;
+    }
+    fake_timer_ticks = 100;
+    shell_cursor_update();
+    if (cursor_show_calls != 2) {
+        fputs("Prompt cursor did not reappear at its blink interval\n", stderr);
+        ++failures;
+    }
 
     failures += run_case(
         "print command",

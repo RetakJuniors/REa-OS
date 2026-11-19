@@ -35,6 +35,14 @@ void serial_write(const char *text)
     (void)text;
 }
 
+void cursor_begin_console_update(void)
+{
+}
+
+void cursor_end_console_update(void)
+{
+}
+
 static int same_pixels(const uint32_t *left, const uint32_t *right)
 {
     return memcmp(left, right, sizeof(pixels)) == 0;
@@ -89,6 +97,19 @@ int main(void)
             fputs("Backspace did not clear the glyph area\n", stderr);
             return 1;
         }
+    }
+
+    uint32_t before_cursor[WIDTH * HEIGHT];
+    memcpy(before_cursor, pixels, sizeof(pixels));
+    console_cursor_show();
+    if (same_pixels(before_cursor, pixels)) {
+        fputs("Console cursor was not drawn\n", stderr);
+        return 1;
+    }
+    console_cursor_hide();
+    if (!same_pixels(before_cursor, pixels)) {
+        fputs("Console cursor did not restore the pixels beneath it\n", stderr);
+        return 1;
     }
 
     puts("Console tests passed");

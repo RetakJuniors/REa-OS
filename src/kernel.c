@@ -2,6 +2,7 @@
 #include "boot.h"
 #include "keyboard.h"
 #include "memory.h"
+#include "mouse.h"
 #include "shell.h"
 #include "serial.h"
 #include "timer.h"
@@ -20,9 +21,12 @@ void kmain(void)
     }
 
     timer_init();
+    mouse_init();
     shell_init();
 
     for (;;) {
+        mouse_poll();
+        shell_cursor_update();
         char character;
         if (keyboard_poll_char(&character)) {
             shell_handle_char(character);

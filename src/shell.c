@@ -5,8 +5,11 @@
 #include "keyboard.h"
 #include "serial.h"
 #include "stat.h"
+#include "timer.h"
 
 #include <stddef.h>
+
+#define CURSOR_BLINK_TICKS 50u
 
 typedef void (*command_handler)(const char *arguments);
 
@@ -20,6 +23,8 @@ static size_t command_length;
 static size_t command_glyph_x[SHELL_LINE_CAPACITY];
 static size_t command_glyph_y[SHELL_LINE_CAPACITY];
 static uint16_t command_glyph_advance[SHELL_LINE_CAPACITY];
+static uint64_t cursor_last_toggle;
+static int prompt_cursor_visible;
 
 static void print_error(void)
 {
@@ -121,18 +126,38 @@ static void show_prompt(void)
     console_write("/> ");
     serial_write("/> ");
     console_cursor_show();
+    prompt_cursor_visible = 1;
+    cursor_last_toggle = timer_ticks();
 }
 
 void shell_init(void)
 {
     command_length = 0;
+    prompt_cursor_visible = 0;
     show_prompt();
+}
+
+void shell_cursor_update(void)
+{
+    uint64_t now = timer_ticks();
+    if (now - cursor_last_toggle < CURSOR_BLINK_TICKS) {
+        return;
+    }
+
+    cursor_last_toggle = now;
+    if (prompt_cursor_visible) {
+        console_cursor_hide();
+    } else {
+        console_cursor_show();
+    }
+    prompt_cursor_visible = !prompt_cursor_visible;
 }
 
 void shell_handle_char(char character)
 {
     if (character == '\n') {
         console_cursor_hide();
+        prompt_cursor_visible = 0;
         console_putc('\n');
         serial_write("\r\n");
         execute_command();
@@ -144,12 +169,15 @@ void shell_handle_char(char character)
     if (character == '\b') {
         if (command_length != 0) {
             console_cursor_hide();
+            prompt_cursor_visible = 0;
             --command_length;
             console_erase_input(command_glyph_x[command_length],
                                 command_glyph_y[command_length],
                                 command_glyph_advance[command_length]);
             serial_write("\b \b");
             console_cursor_show();
+            prompt_cursor_visible = 1;
+            cursor_last_toggle = timer_ticks();
         }
         return;
     }
@@ -160,6 +188,7 @@ void shell_handle_char(char character)
     }
 
     console_cursor_hide();
+    prompt_cursor_visible = 0;
     size_t glyph_index = command_length;
     console_get_cursor_position(&command_glyph_x[glyph_index],
                                 &command_glyph_y[glyph_index]);
@@ -170,4 +199,6 @@ void shell_handle_char(char character)
     char output[2] = { character, '\0' };
     serial_write(output);
     console_cursor_show();
+    prompt_cursor_visible = 1;
+    cursor_last_toggle = timer_ticks();
 }
