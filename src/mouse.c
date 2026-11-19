@@ -1,6 +1,7 @@
 #include "mouse.h"
 
 #include "cursor.h"
+#include "pic.h"
 #include "serial.h"
 
 #include <stddef.h>
@@ -13,11 +14,15 @@
 #define PS2_INPUT_FULL 0x02u
 #define PS2_AUXILIARY_DATA 0x20u
 #define PS2_WAIT_LIMIT 100000u
+#define MOUSE_BUFFER_SIZE 256u
 
 static struct mouse_state current_state;
 static uint8_t packet[3];
 static uint8_t packet_index;
 static int initialized;
+static volatile uint8_t byte_buffer[MOUSE_BUFFER_SIZE];
+static volatile uint8_t buffer_head;
+static volatile uint8_t buffer_tail;
 
 static uint8_t inb(uint16_t port)
 {
@@ -107,6 +112,10 @@ static int send_auxiliary_command(uint8_t command)
 int mouse_init(void)
 {
     serial_write("REA OS: initializing PS/2 mouse\r\n");
+    buffer_head = 0;
+    buffer_tail = 0;
+    packet_index = 0;
+    initialized = 0;
     drain_output();
 
     if (!controller_command(0xa7) || !controller_command(0x20) ||
@@ -115,7 +124,7 @@ int mouse_init(void)
     }
 
     uint8_t config = inb(PS2_DATA_PORT);
-    config = (uint8_t)((config & (uint8_t)~0x02u) | 0x20u);
+    config = (uint8_t)(config | 0x22u);
     if (!controller_command(0x60) || !wait_input_empty()) {
         goto failed;
     }
@@ -135,6 +144,7 @@ int mouse_init(void)
     current_state.middle_button = 0;
     packet_index = 0;
     initialized = 1;
+    pic_enable_irq(12);
     serial_write("REA OS: PS/2 mouse found\r\n");
     return 1;
 
@@ -165,20 +175,47 @@ static void process_packet(void)
     cursor_get_position(&current_state.x, &current_state.y);
 }
 
+void mouse_irq_handler(void)
+{
+    uint8_t status = inb(PS2_STATUS_PORT);
+    if ((status & PS2_OUTPUT_FULL) == 0 ||
+        (status & PS2_AUXILIARY_DATA) == 0) {
+        return;
+    }
+
+    uint8_t data = inb(PS2_DATA_PORT);
+    uint8_t next_head = (uint8_t)(buffer_head + 1u);
+    if (next_head != buffer_tail) {
+        byte_buffer[buffer_head] = data;
+        buffer_head = next_head;
+    }
+}
+
+int mouse_has_data(void)
+{
+    return buffer_head != buffer_tail;
+}
+
+static int dequeue_byte(uint8_t *data)
+{
+    uint8_t tail = buffer_tail;
+    if (tail == buffer_head) {
+        return 0;
+    }
+
+    *data = byte_buffer[tail];
+    buffer_tail = (uint8_t)(tail + 1u);
+    return 1;
+}
+
 void mouse_poll(void)
 {
     if (!initialized) {
         return;
     }
 
-    for (;;) {
-        uint8_t status = inb(PS2_STATUS_PORT);
-        if ((status & PS2_OUTPUT_FULL) == 0 ||
-            (status & PS2_AUXILIARY_DATA) == 0) {
-            return;
-        }
-
-        uint8_t data = inb(PS2_DATA_PORT);
+    uint8_t data;
+    while (dequeue_byte(&data)) {
         if (packet_index == 0) {
             if ((data & 0x08u) == 0) {
                 continue;

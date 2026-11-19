@@ -7,6 +7,6 @@ void timer_init(void);
 void timer_wait_for_interrupt(void);
 uint64_t timer_ticks(void);
 uint64_t timer_cpu_usage_percent(void);
-void timer_irq_handler(void);
+void timer_on_tick(void);
 
 #endif

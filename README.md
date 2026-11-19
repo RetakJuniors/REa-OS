@@ -2,7 +2,7 @@
 
 REA OS, x86_64 icin sifirdan yazilan egitim amacli bir cekirdek projesidir.
 Limine BIOS/UEFI hibrit ISO'yu acar; cekirdek framebuffer'a metin cizer, PS/2
-klavye ve fareyi polling ile okur, ekranda fare imleci gosterir, `print`
+klavye ve fareyi kesmelerle okur, ekranda fare imleci gosterir, `print`
 komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir.
 
 > Bu proje deneyseldir. Sanal makinede ve sanal disksiz kullanin. Cekirdek
@@ -27,9 +27,13 @@ komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir.
 |   |-- boot.h
 |   |-- console.h
 |   |-- cursor.h
+|   |-- gdt.h
+|   |-- idt.h
 |   |-- keyboard.h
 |   |-- memory.h
 |   |-- mouse.h
+|   |-- pic.h
+|   |-- pit.h
 |   |-- serial.h
 |   |-- shell.h
 |   |-- stat.h
@@ -43,12 +47,16 @@ komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir.
 |   |-- cursor_data.h
 |   |-- font.c
 |   |-- font.h
-|   |-- interrupts.S
+|   |-- gdt.c
+|   |-- idt.c
+|   |-- isr.S
 |   |-- kernel.c
 |   |-- keyboard.c
 |   |-- keyboard_layout.c
 |   |-- memory.c
 |   |-- mouse.c
+|   |-- pic.c
+|   |-- pit.c
 |   |-- serial.c
 |   |-- shell.c
 |   |-- stat.c
@@ -74,7 +82,12 @@ ile secilir; secenekler ayri derleme klasorlerinde tutulur.
 
 | Dosya | Aciklama |
 |---|---|
-| `src/kernel.c` | Framebuffer, RAM yoneticisi, zamanlayici ve fareyi baslatir; klavye/fare polling dongusunu calistirir. |
+| `src/kernel.c` | GDT, IDT, PIC, PIT, RAM yoneticisi ve fareyi baslatir; ana dongude klavye/fare verisini isler. |
+| `src/gdt.c` | Kernel kod/veri bolumlerini, TSS'yi ve double-fault yiginini kurar. |
+| `src/idt.c` | 256 IDT girisini kurar, istisnalari raporlar ve IRQ'lari ilgili surucuye yollar. |
+| `src/isr.S` | Istisna/IRQ girislerini, yazmac kaydetme-kurtarmayi ve GDT'yi yukleme kodunu saglar. |
+| `src/pic.c` | 8259 PIC'i 32-47 vektorlerine tasir, IRQ maskelerini ve EOI sinyallerini yonetir. |
+| `src/pit.c` | PIT'i saniyede 100 kesmeye ayarlar ve zamanlayici tikini bildirir. |
 | `src/boot.c` | Limine framebuffer, memory map ve HHDM yanitlarini alir. |
 | `tools/ttf2c.py` | Pillow ile TTF gliflerini build-time alpha piksel tablosuna cevirir. |
 | `src/font.c` | Betigin olusturdugu salt okunur Inter glifleri ve ikili aramayi tutar. |
@@ -83,12 +96,11 @@ ile secilir; secenekler ayri derleme klasorlerinde tutulur.
 | `src/cursor.c` | Alpha ARGB fare okunu cizer; fare hareketinde eski pikselleri geri yukler. |
 | `src/cursor_data.c` | PNG betiginin olusturdugu salt okunur fare imleci piksel tablosu. |
 | `tools/png2c.py` | PNG fare imleclerini derleme oncesi ARGB C tablosuna cevirir. |
-| `src/mouse.c` | i8042'in yardimci portundan PS/2 fare paketlerini polling ile okur. |
-| `src/keyboard.c` | PS/2 portlarindan kesmesiz, polling klavye okumasini yapar. |
+| `src/mouse.c` | IRQ12 verisini halka tamponuna alir; fare paketini ana dongude cozer. |
+| `src/keyboard.c` | IRQ1 tarama kodlarini halka tamponuna alir; klavye girdisini ana dongude cozer. |
 | `src/keyboard_layout.c` | Set-1 tarama kodlarini secilen Turkce Q veya US QWERTY duzenine cevirir. |
 | `src/memory.c` | Limine usable RAM bolgelerini bitmap tabanli fiziksel sayfa yoneticisine aktarir. |
-| `src/timer.c` | PIT'i 100 Hz ayarlar, IDT/PIC ile kesme alir ve son 5 saniyeyi olcer. |
-| `src/interrupts.S` | Timer kesmesinde yazmaclari koruyup C kesme isleyicisini cagirir. |
+| `src/timer.c` | PIT tiklerini ve `hlt` beklemesini sayarak son 5 saniyelik CPU tahmini yapar. |
 | `src/shell.c` | Satiri toplar, Enter/Backspace islemlerini yapar, komutu bulur. |
 | `src/stat.c` | `stat -cpu`, `stat -ram` ve `stat all` ciktilarini uretir. |
 | `src/serial.c` | COM1 hazirsa hata ayiklama metnini gonderir; portu yapilandirmaz. |
@@ -100,14 +112,17 @@ ile secilir; secenekler ayri derleme klasorlerinde tutulur.
 
 ### Onemli kod akisi
 
-1. `kmain()` framebuffer'i, memory map tabanli sayfa yoneticisini ve PIT'i baslatir.
-   PS/2 fareyi i8042 yardimci portundan baslatir; klavye ve fare verisini ayni
-   ana dongude polling ile ayirir.
-2. Klavye girdisi yokken cekirdek `hlt` ile bekler; PIT kesmesi en gec 10 ms sonra uyandirip klavye polling'i surdurur.
-3. Tus haritasi tarama kodunu ASCII karaktere cevirir; Shift ve Caps Lock uygulanir.
-4. Enter satiri komut tablosuna gider. Tabloda yalnizca `print` ve `stat` vardir.
-5. `stat -cpu` son 5 saniyedeki PIT kesmelerinde cekirdegin `hlt` beklemesinde olup olmadigina gore CPU kullanimini yaklasik hesaplar.
-6. `stat -ram`, memory map'teki tam usable sayfalari ve bitmap allocator durumunu raporlar.
+1. `kmain()` framebuffer'i, memory map tabanli sayfa yoneticisini, GDT/TSS,
+   IDT, PIC ve PIT'i baslatir; PS/2 fareyi i8042 yardimci portundan hazirlar.
+2. IRQ1 ve IRQ12 isleyicileri yalnizca gelen byte'i halka tamponuna koyup EOI
+   gonderir. Tus/fare paketi cozme, komut ve cizim ana dongude yapilir.
+3. Girdi tamponlari bossa cekirdek kesmeleri acip `hlt` ile uyur. PIT'in IRQ0
+   tikleri en gec 10 ms icinde uyandirir.
+4. Tus haritasi tarama kodunu ASCII karaktere cevirir; Shift ve Caps Lock uygulanir.
+5. Enter satiri komut tablosuna gider. Tabloda yalnizca `print` ve `stat` vardir.
+6. `stat -cpu` son 5 saniyedeki PIT tiklerinde cekirdegin `hlt` beklemesinde
+   olup olmadigina gore CPU kullanimini yaklasik hesaplar.
+7. `stat -ram`, memory map'teki tam usable sayfalari ve bitmap allocator durumunu raporlar.
 
 Komut isteminin sonunda yaklasik her 500 ms'de bir gorunup kaybolan dikey blok
 vardir. PIT'in 100 Hz tikleri kullanilir; baska bir zamanlayici veya komut
@@ -129,6 +144,11 @@ QWERTY` secenegi standart ABD tus isaretlerini kullanir; bu duzende tirnak
 yazar; `i` kucuk harf, `I` buyuk harf olarak kullanilir. ASCII disi karakterler
 konsola alinmaz. Shift+3 ve benzeri isaretler yalnizca tablodaki ASCII
 karsiliklar kadar desteklenir.
+
+CPU istisnalari (0-31) istisna adini, hata kodunu ve RIP degerini ekrana ve
+COM1'e yazar, sonra cekirdegi durdurur. Double fault ayri bir TSS/IST yigininda
+islenir. PIC, IRQ0-15'i 32-47 vektorlerine tasir; bu adimda PIT, klavye ve fare
+kesmeleri kullanilir.
 
 RAM toplami Limine memory map'indeki tam sayfa hizasina alinmis `usable`
 bolgelerden hesaplanir. Ayiricinin bitmap'i icin kullanilan sayfalar da
@@ -269,6 +289,8 @@ icin VirtualBox Host tusunu (varsayilan olarak sag Ctrl) kullanin.
 | Siyah ekran, istem yok | VirtualBox ekran belleğini 16 MB yapin; makineyi tamamen kapatip tekrar acin. |
 | Klavye yazmiyor | VM penceresine tiklayip tuslari tekrar deneyin; VirtualBox'in klavyeyi yakaladigini kontrol edin. |
 | Fare oku hareket etmiyor | VirtualBox penceresine tiklayip fareyi yakalayin; i8042 uyumlu PS/2 fare aygitinin etkin oldugunu kontrol edin. Seri cikti `PS/2 mouse initialization failed` ise VM'yi kapatip yeniden baslatin. |
+| Klavye/fare girdisi kesildi | Seri portta `IDT loaded`, `PIC remapped` ve `PIT started` satirlarini arayin; bu altyapi baslatilmadan IRQ girdisi calismaz. |
+| Istisna ekrani gorunuyor | Seri porttaki istisna adini, hata kodunu ve RIP'i kaydedin; cekirdek bilerek `hlt` durumunda durur. |
 | `assets/cursors` icinde PNG yok | PNG gorsellerini bu klasore koyup `python3 tools/png2c.py` komutunu yeniden calistirin. |
 | PNG disi cursor formati uyarisi | Betik yalnizca PNG okur; AI, EPS, JPEG, SVG, CUR veya ICO dosyalari tabloya alinmaz. PNG surumlerini ekleyin. |
 | PNG alpha/boyut uyarisi | Saydamlik kanali olmayan gorsel opak olur. 64x64'ten buyuk gorseller calismaya devam eder ancak uyarilir. |

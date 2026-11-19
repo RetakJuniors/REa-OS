@@ -12,6 +12,8 @@ struct mouse_state {
 };
 
 int mouse_init(void);
+void mouse_irq_handler(void);
+int mouse_has_data(void);
 void mouse_poll(void);
 void mouse_get_state(struct mouse_state *state);
 

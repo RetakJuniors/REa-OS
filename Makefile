@@ -30,11 +30,11 @@ CFLAGS := -std=gnu11 -O2 -Wall -Wextra -Werror \
 LDFLAGS := -nostdlib -static -no-pie -Wl,--build-id=none \
 	-Wl,-T,linker.ld -Wl,-z,max-page-size=0x1000
 SOURCES := src/boot.c src/console.c src/cursor.c src/cursor_data.c \
-	src/font.c src/kernel.c src/mouse.c \
+	src/font.c src/gdt.c src/idt.c src/kernel.c src/mouse.c \
 	src/keyboard.c src/keyboard_layout.c src/memory.c src/serial.c \
-	src/shell.c src/stat.c src/timer.c src/util.c
+	src/pic.c src/pit.c src/shell.c src/stat.c src/timer.c src/util.c
 OBJECTS := $(SOURCES:src/%.c=$(BUILD_DIR)/%.o)
-ASM_SOURCES := src/interrupts.S
+ASM_SOURCES := src/isr.S
 ASM_OBJECTS := $(ASM_SOURCES:src/%.S=$(BUILD_DIR)/%.o)
 CURSOR_PNGS := $(wildcard $(CURSOR_DIR)/*.png) \
 	$(wildcard $(CURSOR_DIR)/*.PNG)
