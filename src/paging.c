@@ -72,16 +72,11 @@ static volatile uint64_t *get_child_table(volatile uint64_t *parent,
 {
     uint64_t entry = parent[index];
     if ((entry & PAGE_PRESENT) != 0) {
-        if ((entry & PAGE_LARGE) != 0) {
+        if ((entry & PAGE_LARGE) != 0 ||
+            ((flags & PAGING_FLAG_WRITABLE) != 0 &&
+             (entry & PAGING_FLAG_WRITABLE) == 0)) {
             return 0;
         }
-        if ((flags & PAGING_FLAG_WRITABLE) != 0) {
-            entry |= PAGING_FLAG_WRITABLE;
-        }
-        if ((flags & PAGING_FLAG_USER) != 0) {
-            entry |= PAGING_FLAG_USER;
-        }
-        parent[index] = entry;
         return table_from_physical(entry & PAGE_ADDRESS_MASK);
     }
     if (!create) {
@@ -107,9 +102,6 @@ static volatile uint64_t *get_child_table(volatile uint64_t *parent,
     }
 
     uint64_t entry_flags = PAGE_PRESENT | PAGING_FLAG_WRITABLE;
-    if ((flags & PAGING_FLAG_USER) != 0) {
-        entry_flags |= PAGING_FLAG_USER;
-    }
     parent[index] = physical_address | entry_flags;
     return (volatile uint64_t *)new_table;
 }
@@ -159,7 +151,15 @@ int paging_nx_available(void)
 int paging_map_page(uintptr_t virtual_address, uint64_t physical_address,
                     uint64_t flags)
 {
-    if (!initialized || !is_canonical(virtual_address) ||
+    const uint64_t known_flags = PAGING_FLAG_PRESENT |
+                                 PAGING_FLAG_WRITABLE |
+                                 PAGING_FLAG_USER |
+                                 PAGING_FLAG_WRITE_THROUGH |
+                                 PAGING_FLAG_CACHE_DISABLE |
+                                 PAGING_FLAG_GLOBAL |
+                                 PAGING_FLAG_NO_EXECUTE;
+    if ((flags & PAGING_FLAG_USER) != 0 || (flags & ~known_flags) != 0 ||
+        !initialized || !is_canonical(virtual_address) ||
         (virtual_address & (PAGING_PAGE_SIZE - 1)) != 0 ||
         (physical_address & (PAGING_PAGE_SIZE - 1)) != 0 ||
         (physical_address & ~PAGE_ADDRESS_MASK) != 0 ||
@@ -167,26 +167,96 @@ int paging_map_page(uintptr_t virtual_address, uint64_t physical_address,
         return 0;
     }
 
-    volatile uint64_t *table = table_from_physical(root_table_physical);
-    if (table == 0) {
+    volatile uint64_t *root = table_from_physical(root_table_physical);
+    if (root == 0) {
         return 0;
     }
 
+    uint16_t indices[5];
+    unsigned int index_count = 0;
+    volatile uint64_t *table = root;
+    int found_missing_entry = 0;
+
+    /*
+     * Inspect every existing ancestor before creating anything. Mapping a
+     * writable leaf through a read-only ancestor cannot be done without
+     * changing permissions for its siblings, so reject it instead.
+     */
     for (unsigned int level = page_levels; level > 1; --level) {
         unsigned int shift = 12u + 9u * (level - 1u);
         uint16_t index = (uint16_t)((virtual_address >> shift) & 0x1ffu);
-        table = get_child_table(table, index, 1, flags);
-        if (table == 0) {
+        indices[index_count++] = index;
+        if (found_missing_entry) {
+            continue;
+        }
+        uint64_t entry = table[index];
+        if ((entry & PAGE_PRESENT) == 0) {
+            found_missing_entry = 1;
+            continue;
+        }
+        if ((entry & PAGE_LARGE) != 0 ||
+            ((flags & PAGING_FLAG_WRITABLE) != 0 &&
+             (entry & PAGING_FLAG_WRITABLE) == 0)) {
+            return 0;
+        }
+        table = table_from_physical(entry & PAGE_ADDRESS_MASK);
+        if (table == 0) return 0;
+    }
+
+    if (!found_missing_entry) {
+        uint16_t leaf_index =
+            (uint16_t)((virtual_address >> 12) & 0x1ffu);
+        if ((table[leaf_index] & PAGE_PRESENT) != 0) {
             return 0;
         }
     }
 
+    struct {
+        volatile uint64_t *parent;
+        uint16_t index;
+        void *page;
+    } allocated_tables[5];
+    unsigned int allocated_count = 0;
+    table = root;
+    for (unsigned int path_index = 0; path_index < index_count;
+         ++path_index) {
+        uint16_t index = indices[path_index];
+        int was_missing = (table[index] & PAGE_PRESENT) == 0;
+        volatile uint64_t *child =
+            get_child_table(table, index, 1, flags);
+        if (child == 0) {
+            while (allocated_count != 0) {
+                --allocated_count;
+                allocated_tables[allocated_count].parent[
+                    allocated_tables[allocated_count].index] = 0;
+                (void)pmm_free_page(
+                    allocated_tables[allocated_count].page);
+            }
+            invalidate_page(virtual_address);
+            return 0;
+        }
+        if (was_missing) {
+            allocated_tables[allocated_count].parent = table;
+            allocated_tables[allocated_count].index = index;
+            allocated_tables[allocated_count].page = (void *)child;
+            ++allocated_count;
+        }
+        table = child;
+    }
+
     uint16_t index = (uint16_t)((virtual_address >> 12) & 0x1ffu);
     if ((table[index] & PAGE_PRESENT) != 0) {
+        while (allocated_count != 0) {
+            --allocated_count;
+            allocated_tables[allocated_count].parent[
+                allocated_tables[allocated_count].index] = 0;
+            (void)pmm_free_page(allocated_tables[allocated_count].page);
+        }
+        invalidate_page(virtual_address);
         return 0;
     }
 
-    uint64_t allowed_flags = PAGING_FLAG_WRITABLE | PAGING_FLAG_USER |
+    uint64_t allowed_flags = PAGING_FLAG_WRITABLE |
                              PAGING_FLAG_WRITE_THROUGH |
                              PAGING_FLAG_CACHE_DISABLE |
                              PAGING_FLAG_GLOBAL | PAGING_FLAG_NO_EXECUTE;
@@ -211,6 +281,7 @@ int paging_unmap_page(uintptr_t virtual_address)
         uint16_t index = (uint16_t)((virtual_address >> shift) & 0x1ffu);
         uint64_t entry = table[index];
         if ((entry & PAGE_PRESENT) == 0 ||
+            (entry & PAGING_FLAG_USER) != 0 ||
             ((level == 3 || level == 2) && (entry & PAGE_LARGE) != 0)) {
             return 0;
         }
@@ -221,7 +292,8 @@ int paging_unmap_page(uintptr_t virtual_address)
     }
 
     uint16_t index = (uint16_t)((virtual_address >> 12) & 0x1ffu);
-    if ((table[index] & PAGE_PRESENT) == 0) {
+    if ((table[index] & PAGE_PRESENT) == 0 ||
+        (table[index] & PAGING_FLAG_USER) != 0) {
         return 0;
     }
     table[index] = 0;

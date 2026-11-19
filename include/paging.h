@@ -15,6 +15,10 @@
 int paging_init(uint64_t hhdm_offset);
 int paging_is_active(void);
 int paging_nx_available(void);
+/*
+ * Maps only supervisor pages in the active kernel address space.
+ * User mappings require a future process-owned address-space API.
+ */
 int paging_map_page(uintptr_t virtual_address, uint64_t physical_address,
                     uint64_t flags);
 int paging_unmap_page(uintptr_t virtual_address);
