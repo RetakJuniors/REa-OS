@@ -56,6 +56,11 @@ int memory_get_stats(struct memory_stats *stats)
     return 1;
 }
 
+int pmm_get_memory_stats(struct memory_stats *stats)
+{
+    return memory_get_stats(stats);
+}
+
 void *memory_alloc_page(void)
 {
     if (allocated_frames == 8) {
@@ -68,6 +73,16 @@ int memory_free_page(void *page)
 {
     (void)page;
     return 1;
+}
+
+void *pmm_alloc_page(void)
+{
+    return memory_alloc_page();
+}
+
+int pmm_free_page(void *page)
+{
+    return memory_free_page(page);
 }
 
 static int fail(const char *message)

@@ -31,11 +31,11 @@ LDFLAGS := -nostdlib -static -no-pie -Wl,--build-id=none \
 	-Wl,-T,linker.ld -Wl,-z,max-page-size=0x1000
 SOURCES := src/boot.c src/console.c src/cursor.c src/cursor_data.c \
 	src/font.c src/gdt.c src/heap.c src/idt.c src/kernel.c src/mouse.c \
-	src/keyboard.c src/keyboard_layout.c src/memory.c src/serial.c \
-	src/paging.c src/pic.c src/pit.c src/ramfs.c src/rtc.c src/shell.c \
-	src/stat.c src/system.c src/timer.c src/util.c
+	src/keyboard.c src/keyboard_layout.c src/memory.c src/pmm.c src/serial.c \
+	src/paging.c src/pic.c src/pit.c src/ramfs.c src/rtc.c src/scheduler.c \
+	src/shell.c src/stat.c src/system.c src/task.c src/timer.c src/util.c
 OBJECTS := $(SOURCES:src/%.c=$(BUILD_DIR)/%.o)
-ASM_SOURCES := src/isr.S
+ASM_SOURCES := src/context.S src/isr.S
 ASM_OBJECTS := $(ASM_SOURCES:src/%.S=$(BUILD_DIR)/%.o)
 CURSOR_PNGS := $(wildcard $(CURSOR_DIR)/*.png) \
 	$(wildcard $(CURSOR_DIR)/*.PNG)
@@ -117,8 +117,16 @@ test: src/cursor_data.c | $(BUILD_DIR)
 		tests/stat_test.c src/stat.c -o $(BUILD_DIR)/stat_test
 	$(BUILD_DIR)/stat_test
 	$(CC) -std=c11 -Wall -Wextra -Werror -Iinclude \
-		tests/memory_test.c src/memory.c -o $(BUILD_DIR)/memory_test
+		tests/memory_test.c src/memory.c src/pmm.c -o $(BUILD_DIR)/memory_test
 	$(BUILD_DIR)/memory_test
+	$(CC) -std=c11 -Wall -Wextra -Werror -DREA_PAGING_TEST -Iinclude \
+		tests/vmm_test.c src/paging.c -o $(BUILD_DIR)/vmm_test
+	$(BUILD_DIR)/vmm_test
+	$(CC) -std=c11 -Wall -Wextra -Werror -mno-red-zone \
+		-mgeneral-regs-only -Iinclude tests/scheduler_test.c \
+		src/scheduler.c src/task.c src/context.S \
+		-o $(BUILD_DIR)/scheduler_test
+	$(BUILD_DIR)/scheduler_test
 	$(CC) -std=c11 -Wall -Wextra -Werror -Iinclude \
 		tests/heap_test.c -o $(BUILD_DIR)/heap_test
 	$(BUILD_DIR)/heap_test

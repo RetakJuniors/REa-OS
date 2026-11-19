@@ -1,6 +1,6 @@
 #include "heap.h"
 
-#include "memory.h"
+#include "pmm.h"
 #include "paging.h"
 
 #include <stdint.h>
@@ -62,7 +62,7 @@ static int grow_heap(void)
 
     uintptr_t virtual_address =
         (uintptr_t)(HEAP_BASE + mapped_pages * PAGING_PAGE_SIZE);
-    void *physical_alias = memory_alloc_page();
+    void *physical_alias = pmm_alloc_page();
     if (physical_alias == 0) {
         return 0;
     }
@@ -80,7 +80,7 @@ static int grow_heap(void)
                              (paging_nx_available()
                                   ? PAGING_FLAG_NO_EXECUTE
                                   : 0))) {
-        (void)memory_free_page(physical_alias);
+        (void)pmm_free_page(physical_alias);
         return 0;
     }
 
@@ -112,7 +112,7 @@ int heap_init(void)
     mapped_pages = 0;
     max_pages = HEAP_LIMIT_BYTES / PAGING_PAGE_SIZE;
     struct memory_stats memory;
-    if (memory_get_stats(&memory)) {
+    if (pmm_get_memory_stats(&memory)) {
         uint64_t quarter = memory.free_bytes / 4u;
         uint64_t quarter_pages = quarter / PAGING_PAGE_SIZE;
         if (quarter_pages < max_pages) {

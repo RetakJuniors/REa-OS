@@ -1,5 +1,6 @@
 #include "boot.h"
 #include "memory.h"
+#include "pmm.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -71,6 +72,12 @@ int main(void)
         return 1;
     }
 
+    if (memory_free_page(physical_memory + 8 * TEST_PAGE_SIZE) ||
+        memory_free_page(physical_memory + TEST_PAGE_SIZE + 1u)) {
+        fputs("allocator accepted a reserved or unaligned page\n", stderr);
+        return 1;
+    }
+
     if (!memory_free_page(page) || memory_free_page(page) ||
         !memory_get_stats(&stats) ||
         stats.used_bytes != 8 * TEST_PAGE_SIZE ||
@@ -78,7 +85,16 @@ int main(void)
         fputs("page release failed\n", stderr);
         return 1;
     }
+    struct pmm_stats pmm;
+    if (!pmm_get_stats(&pmm) ||
+        pmm.total_pages != 28u ||
+        pmm.used_pages != 8u ||
+        pmm.free_pages != 20u ||
+        pmm_alloc_page() == 0) {
+        fputs("PMM API or page statistics failed\n", stderr);
+        return 1;
+    }
 
-    puts("Memory tests passed");
+    puts("Memory and PMM tests passed");
     return 0;
 }

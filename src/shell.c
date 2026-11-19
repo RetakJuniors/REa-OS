@@ -4,10 +4,12 @@
 #include "heap.h"
 #include "keyboard.h"
 #include "ramfs.h"
+#include "pmm.h"
 #include "rtc.h"
 #include "serial.h"
 #include "stat.h"
 #include "system.h"
+#include "task.h"
 #include "timer.h"
 #include "util.h"
 
@@ -101,6 +103,74 @@ static void error(const char *message)
 {
     both(message);
     both("\n");
+}
+
+static void write_number(uint64_t number)
+{
+    char digits[21];
+    unsigned int length = 0;
+    do {
+        digits[length++] = (char)('0' + number % 10u);
+        number /= 10u;
+    } while (number != 0u);
+    while (length != 0u) {
+        char output[2] = {digits[--length], '\0'};
+        both(output);
+    }
+}
+
+static void command_ps(const struct parsed_line *parsed)
+{
+    (void)parsed;
+    both("ID NAME STATE STACK\n");
+    for (size_t index = 0;; ++index) {
+        struct task_info task;
+        if (!task_get_at(index, &task)) {
+            break;
+        }
+        write_number(task.id);
+        both(" ");
+        both(task.name);
+        both(" ");
+        both(task_state_name(task.state));
+        both(" ");
+        if (task.stack_size == 0) {
+            both("bootstrap\n");
+        } else {
+            write_number(task.stack_size / 1024u);
+            both(" KB\n");
+        }
+    }
+}
+
+static void command_mem(const struct parsed_line *parsed)
+{
+    (void)parsed;
+    struct memory_stats memory;
+    struct pmm_stats pages;
+    struct heap_stats heap;
+    if (!pmm_get_memory_stats(&memory) || !pmm_get_stats(&pages)) {
+        error("Memory information unavailable");
+        return;
+    }
+    both("RAM total: ");
+    write_number(memory.total_bytes / (1024u * 1024u));
+    both(" MB\nRAM free: ");
+    write_number(memory.free_bytes / (1024u * 1024u));
+    both(" MB\nRAM used: ");
+    write_number(memory.used_bytes / (1024u * 1024u));
+    both(" MB\nPages total/free/used: ");
+    write_number(pages.total_pages);
+    both("/");
+    write_number(pages.free_pages);
+    both("/");
+    write_number(pages.used_pages);
+    both("\n");
+    if (heap_get_stats(&heap)) {
+        both("Kernel heap used: ");
+        write_number(heap.used_bytes);
+        both(" bytes\n");
+    }
 }
 
 static void print_prompt(void)
@@ -370,7 +440,7 @@ static void command_cls(const struct parsed_line *parsed)
 static void command_ver(const struct parsed_line *parsed)
 {
     (void)parsed;
-    both("REA OS v0.0.7a\n");
+    both("REA OS v0.0.8a\n");
 }
 
 static void command_sys(const struct parsed_line *parsed)
@@ -469,7 +539,9 @@ static void command_help(const struct parsed_line *);
 
 static const struct command commands[] = {
     {"print", "print \"text\"", "Print quoted text", command_print},
-    {"stat", "stat -cpu | -ram | all", "Show CPU and RAM status", command_stat},
+    {"stat", "stat -cpu | -ram | -task | all", "Show CPU, RAM and task status", command_stat},
+    {"ps", "ps", "List active kernel tasks", command_ps},
+    {"mem", "mem", "Show physical memory and heap usage", command_mem},
     {"ls", "ls [path]", "List files and directories", command_ls},
     {"cd", "cd [path]", "Change directory", command_cd},
     {"pwd", "pwd", "Print current directory", command_pwd},

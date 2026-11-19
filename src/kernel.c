@@ -8,7 +8,9 @@
 #include "mouse.h"
 #include "pic.h"
 #include "paging.h"
+#include "pmm.h"
 #include "pit.h"
+#include "task.h"
 #include "shell.h"
 #include "serial.h"
 #include "timer.h"
@@ -24,7 +26,7 @@ void kmain(void)
     uint64_t hhdm_offset;
     int memory_ready = 0;
     if (boot_get_memory_map(&memory_map, &hhdm_offset)) {
-        memory_ready = memory_init(memory_map, hhdm_offset);
+        memory_ready = pmm_init(memory_map, hhdm_offset);
         if (!memory_ready) {
             serial_write("REA OS: physical memory manager init failed\r\n");
         }
@@ -45,6 +47,7 @@ void kmain(void)
     pic_init();
     keyboard_init();
     pit_init();
+    scheduler_init();
     mouse_init();
     shell_init();
     __asm__ volatile ("sti" ::: "memory");
@@ -56,6 +59,7 @@ void kmain(void)
             shell_handle_keyboard_event(&event);
         }
         shell_cursor_update();
+        task_yield();
 
         __asm__ volatile ("cli" ::: "memory");
         if (keyboard_has_data() || mouse_has_data()) {

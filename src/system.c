@@ -213,7 +213,7 @@ size_t system_format(char *buffer, size_t capacity)
     append_text(buffer, capacity, &length, "m ");
     append_number(buffer, capacity, &length, seconds % 60u);
     append_text(buffer, capacity, &length, "s");
-    append_text(buffer, capacity, &length, "\nVersion: REA OS v0.0.7a");
+    append_text(buffer, capacity, &length, "\nVersion: REA OS v0.0.8a");
     return length;
 }
 

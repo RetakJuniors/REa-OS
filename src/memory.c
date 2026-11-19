@@ -173,6 +173,9 @@ int memory_get_stats(struct memory_stats *stats)
     stats->total_bytes = usable_pages * PAGE_SIZE;
     stats->free_bytes = free_pages * PAGE_SIZE;
     stats->used_bytes = stats->total_bytes - stats->free_bytes;
+    stats->total_pages = usable_pages;
+    stats->free_pages = free_pages;
+    stats->used_pages = stats->total_pages - stats->free_pages;
     return 1;
 }
 

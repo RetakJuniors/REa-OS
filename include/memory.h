@@ -9,6 +9,9 @@ struct memory_stats {
     uint64_t total_bytes;
     uint64_t used_bytes;
     uint64_t free_bytes;
+    uint64_t total_pages;
+    uint64_t used_pages;
+    uint64_t free_pages;
 };
 
 int memory_init(const struct limine_memmap_response *memory_map,

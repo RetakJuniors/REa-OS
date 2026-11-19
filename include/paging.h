@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #define PAGING_PAGE_SIZE 4096u
+#define PAGING_FLAG_PRESENT (1ull << 0)
 #define PAGING_FLAG_WRITABLE (1ull << 1)
 #define PAGING_FLAG_USER (1ull << 2)
 #define PAGING_FLAG_WRITE_THROUGH (1ull << 3)
@@ -18,5 +19,14 @@ int paging_map_page(uintptr_t virtual_address, uint64_t physical_address,
                     uint64_t flags);
 int paging_unmap_page(uintptr_t virtual_address);
 int paging_translate(uintptr_t virtual_address, uint64_t *physical_address);
+int vmm_map_page(uintptr_t virtual_address, uint64_t physical_address,
+                 uint64_t flags);
+int vmm_unmap_page(uintptr_t virtual_address);
+int vmm_translate(uintptr_t virtual_address, uint64_t *physical_address);
+
+#ifdef REA_PAGING_TEST
+void paging_test_initialize(uint64_t root_physical, uint64_t hhdm_offset,
+                            unsigned int levels, int nx_enabled_value);
+#endif
 
 #endif

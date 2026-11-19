@@ -1,8 +1,10 @@
 #include "shell.h"
 #include "font.h"
 #include "heap.h"
+#include "pmm.h"
 #include "rtc.h"
 #include "system.h"
+#include "task.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -149,10 +151,50 @@ void kfree(void *pointer)
     free(pointer);
 }
 
+int pmm_get_memory_stats(struct memory_stats *stats)
+{
+    if (stats == 0) return 0;
+    stats->total_bytes = 256u * 1024u * 1024u;
+    stats->used_bytes = 64u * 1024u * 1024u;
+    stats->free_bytes = 192u * 1024u * 1024u;
+    return 1;
+}
+
+int pmm_get_stats(struct pmm_stats *stats)
+{
+    if (stats == 0) return 0;
+    stats->total_pages = 65536;
+    stats->used_pages = 16384;
+    stats->free_pages = 49152;
+    return 1;
+}
+
+size_t task_count(void)
+{
+    return 1;
+}
+
+int task_get_at(size_t index, struct task_info *info)
+{
+    if (index != 0 || info == 0) return 0;
+    info->id = 1;
+    strcpy(info->name, "kernel");
+    info->state = TASK_RUNNING;
+    info->stack_size = 0;
+    return 1;
+}
+
+const char *task_state_name(enum task_state state)
+{
+    return state == TASK_RUNNING ? "RUNNING" : "UNKNOWN";
+}
+
 int heap_get_stats(struct heap_stats *stats)
 {
-    (void)stats;
-    return 0;
+    if (stats == 0) return 0;
+    stats->mapped_bytes = 4096;
+    stats->used_bytes = 2048;
+    return 1;
 }
 
 int rtc_read(struct rtc_datetime *datetime)
@@ -240,7 +282,9 @@ int main(void)
         "unknown command",
         "help",
         "/> help\nprint print \"text\" - Print quoted text\n"
-        "stat stat -cpu | -ram | all - Show CPU and RAM status\n"
+        "stat stat -cpu | -ram | -task | all - Show CPU, RAM and task status\n"
+        "ps ps - List active kernel tasks\n"
+        "mem mem - Show physical memory and heap usage\n"
         "ls ls [path] - List files and directories\n"
         "cd cd [path] - Change directory\n"
         "pwd pwd - Print current directory\n"
@@ -280,6 +324,20 @@ int main(void)
         fputs("stat command was not dispatched\n", stderr);
         ++failures;
     }
+    failures += run_case(
+        "ps command",
+        "ps",
+        "/> ps\nID NAME STATE STACK\n1 kernel RUNNING bootstrap\n/> ");
+    failures += run_case(
+        "mem command",
+        "mem",
+        "/> mem\nRAM total: 256 MB\nRAM free: 192 MB\nRAM used: 64 MB\n"
+        "Pages total/free/used: 65536/49152/16384\n"
+        "Kernel heap used: 2048 bytes\n/> ");
+    failures += run_case(
+        "version command",
+        "ver",
+        "/> ver\nREA OS v0.0.8a\n/> ");
 
     if (failures != 0) {
         return 1;

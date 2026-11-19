@@ -3,6 +3,7 @@
 #include "console.h"
 #include "heap.h"
 #include "memory.h"
+#include "task.h"
 #include "serial.h"
 #include "timer.h"
 
@@ -84,16 +85,45 @@ static void print_ram(void)
     }
 }
 
+static void print_tasks(void)
+{
+    write_both("Tasks: ");
+    write_number(task_count());
+    write_both("\n");
+    for (size_t index = 0;; ++index) {
+        struct task_info task;
+        if (!task_get_at(index, &task)) {
+            break;
+        }
+        write_number(task.id);
+        write_both(" ");
+        write_both(task.name);
+        write_both(" ");
+        write_both(task_state_name(task.state));
+        write_both(" stack=");
+        if (task.stack_size == 0) {
+            write_both("bootstrap");
+        } else {
+            write_number(task.stack_size / 1024u);
+            write_both(" KB");
+        }
+        write_both("\n");
+    }
+}
+
 void stat_command(const char *arguments)
 {
     if (matches_option(arguments, "-cpu")) {
         print_cpu();
     } else if (matches_option(arguments, "-ram")) {
         print_ram();
+    } else if (matches_option(arguments, "-task")) {
+        print_tasks();
     } else if (matches_option(arguments, "all")) {
         print_cpu();
         print_ram();
+        print_tasks();
     } else {
-        write_both("Usage: stat -cpu | -ram | all\n");
+        write_both("Usage: stat -cpu | -ram | -task | all\n");
     }
 }

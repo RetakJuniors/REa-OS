@@ -1,6 +1,6 @@
 #include "paging.h"
 
-#include "memory.h"
+#include "pmm.h"
 #include "serial.h"
 
 #include <stddef.h>
@@ -19,6 +19,15 @@ static uint64_t root_table_physical;
 static unsigned int page_levels;
 static int nx_enabled;
 static int initialized;
+
+static void invalidate_page(uintptr_t virtual_address)
+{
+#ifdef REA_PAGING_TEST
+    (void)virtual_address;
+#else
+    __asm__ volatile ("invlpg (%0)" : : "r"(virtual_address) : "memory");
+#endif
+}
 
 static uint64_t read_msr(uint32_t msr)
 {
@@ -79,16 +88,21 @@ static volatile uint64_t *get_child_table(volatile uint64_t *parent,
         return 0;
     }
 
-    void *new_table = memory_alloc_page();
+    void *new_table = pmm_alloc_page();
     if (new_table == 0) {
         return 0;
     }
     clear_page(new_table);
 
-    uint64_t physical_address;
-    if (!paging_translate((uintptr_t)new_table, &physical_address) ||
-        (physical_address & (PAGING_PAGE_SIZE - 1)) != 0) {
-        (void)memory_free_page(new_table);
+    uintptr_t virtual_address = (uintptr_t)new_table;
+    if (virtual_address < hhdm) {
+        (void)pmm_free_page(new_table);
+        return 0;
+    }
+    uint64_t physical_address = (uint64_t)(virtual_address - hhdm);
+    if ((physical_address & (PAGING_PAGE_SIZE - 1)) != 0 ||
+        (physical_address & ~PAGE_ADDRESS_MASK) != 0) {
+        (void)pmm_free_page(new_table);
         return 0;
     }
 
@@ -177,7 +191,7 @@ int paging_map_page(uintptr_t virtual_address, uint64_t physical_address,
                              PAGING_FLAG_CACHE_DISABLE |
                              PAGING_FLAG_GLOBAL | PAGING_FLAG_NO_EXECUTE;
     table[index] = physical_address | PAGE_PRESENT | (flags & allowed_flags);
-    __asm__ volatile ("invlpg (%0)" : : "r"(virtual_address) : "memory");
+    invalidate_page(virtual_address);
     return 1;
 }
 
@@ -211,7 +225,7 @@ int paging_unmap_page(uintptr_t virtual_address)
         return 0;
     }
     table[index] = 0;
-    __asm__ volatile ("invlpg (%0)" : : "r"(virtual_address) : "memory");
+    invalidate_page(virtual_address);
     return 1;
 }
 
@@ -241,6 +255,7 @@ int paging_translate(uintptr_t virtual_address, uint64_t *physical_address)
                                 ((uint64_t)virtual_address & page_mask);
             return 1;
         }
+
         table = table_from_physical(entry & PAGE_ADDRESS_MASK);
         if (table == 0) {
             return 0;
@@ -257,3 +272,31 @@ int paging_translate(uintptr_t virtual_address, uint64_t *physical_address)
                          (PAGING_PAGE_SIZE - 1));
     return 1;
 }
+
+int vmm_map_page(uintptr_t virtual_address, uint64_t physical_address,
+                 uint64_t flags)
+{
+    return paging_map_page(virtual_address, physical_address, flags);
+}
+
+int vmm_unmap_page(uintptr_t virtual_address)
+{
+    return paging_unmap_page(virtual_address);
+}
+
+int vmm_translate(uintptr_t virtual_address, uint64_t *physical_address)
+{
+    return paging_translate(virtual_address, physical_address);
+}
+
+#ifdef REA_PAGING_TEST
+void paging_test_initialize(uint64_t root_physical, uint64_t hhdm_offset,
+                            unsigned int levels, int nx_enabled_value)
+{
+    hhdm = hhdm_offset;
+    root_table_physical = root_physical;
+    page_levels = levels;
+    nx_enabled = nx_enabled_value;
+    initialized = levels == 4u || levels == 5u;
+}
+#endif

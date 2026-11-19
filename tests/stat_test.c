@@ -1,6 +1,7 @@
 #include "memory.h"
 #include "heap.h"
 #include "stat.h"
+#include "task.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -41,6 +42,28 @@ int heap_get_stats(struct heap_stats *stats)
     return 1;
 }
 
+size_t task_count(void)
+{
+    return 2;
+}
+
+int task_get_at(size_t index, struct task_info *info)
+{
+    if (index >= 2 || info == 0) {
+        return 0;
+    }
+    info->id = index + 1u;
+    snprintf(info->name, sizeof(info->name), "%s", index == 0 ? "kernel" : "worker");
+    info->state = index == 0 ? TASK_RUNNING : TASK_READY;
+    info->stack_size = index == 0 ? 0 : 16384;
+    return 1;
+}
+
+const char *task_state_name(enum task_state state)
+{
+    return state == TASK_RUNNING ? "RUNNING" : "READY";
+}
+
 static int check(const char *arguments, const char *expected)
 {
     output_length = 0;
@@ -64,10 +87,17 @@ int main(void)
     failures += check("all",
                       "CPU: 12%\n"
                       "RAM: 45 MB / 512 MB (kullanilan / toplam, 467 MB bos)\n"
-                      "Heap: 1 MB used / 4 MB mapped\n");
-    failures += check("", "Usage: stat -cpu | -ram | all\n");
-    failures += check("-x", "Usage: stat -cpu | -ram | all\n");
-    failures += check("-cpu extra", "Usage: stat -cpu | -ram | all\n");
+                      "Heap: 1 MB used / 4 MB mapped\n"
+                      "Tasks: 2\n"
+                      "1 kernel RUNNING stack=bootstrap\n"
+                      "2 worker READY stack=16 KB\n");
+    failures += check("-task",
+                      "Tasks: 2\n"
+                      "1 kernel RUNNING stack=bootstrap\n"
+                      "2 worker READY stack=16 KB\n");
+    failures += check("", "Usage: stat -cpu | -ram | -task | all\n");
+    failures += check("-x", "Usage: stat -cpu | -ram | -task | all\n");
+    failures += check("-cpu extra", "Usage: stat -cpu | -ram | -task | all\n");
 
     if (failures != 0) {
         return 1;
