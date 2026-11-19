@@ -1,5 +1,5 @@
 /build/
 /limine/
-/rea-os.iso
+/rea-os*.iso
 *.o
 *.elf

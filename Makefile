@@ -1,15 +1,26 @@
 CC ?= gcc
 LD ?= ld
 LIMINE_VERSION ?= v8.7.0
-BUILD_DIR := build
+KEYBOARD_LAYOUT ?= tr
 LIMINE_DIR := limine
-KERNEL := $(BUILD_DIR)/kernel.elf
+
+ifeq ($(KEYBOARD_LAYOUT),tr)
+LAYOUT_DEFINE := -DREA_KEYBOARD_LAYOUT_TR
 ISO := rea-os.iso
+else ifeq ($(KEYBOARD_LAYOUT),us)
+LAYOUT_DEFINE := -DREA_KEYBOARD_LAYOUT_US
+ISO := rea-os-us.iso
+else
+$(error KEYBOARD_LAYOUT must be tr or us)
+endif
+
+BUILD_DIR := build/$(KEYBOARD_LAYOUT)
+KERNEL := $(BUILD_DIR)/kernel.elf
 
 CFLAGS := -std=gnu11 -O2 -Wall -Wextra -Werror \
 	-ffreestanding -fno-stack-protector -fno-pic -fno-pie \
 	-m64 -mno-red-zone -mno-mmx -mno-sse -mno-sse2 \
-	-mcmodel=kernel -Iinclude
+	-mcmodel=kernel -Iinclude $(LAYOUT_DEFINE)
 LDFLAGS := -nostdlib -static -no-pie -Wl,--build-id=none \
 	-Wl,-T,linker.ld -Wl,-z,max-page-size=0x1000
 SOURCES := src/boot.c src/console.c src/font.c src/kernel.c \
@@ -61,6 +72,14 @@ test: | $(BUILD_DIR)
 	$(CC) -std=c11 -Wall -Wextra -Werror -Iinclude \
 		tests/font_test.c src/font.c -o $(BUILD_DIR)/font_test
 	$(BUILD_DIR)/font_test
+	$(CC) -std=c11 -Wall -Wextra -Werror -DREA_KEYBOARD_LAYOUT_TR -Iinclude \
+		tests/keyboard_layout_test.c src/keyboard_layout.c \
+		-o $(BUILD_DIR)/keyboard_layout_tr_test
+	$(BUILD_DIR)/keyboard_layout_tr_test
+	$(CC) -std=c11 -Wall -Wextra -Werror -DREA_KEYBOARD_LAYOUT_US -Iinclude \
+		tests/keyboard_layout_test.c src/keyboard_layout.c \
+		-o $(BUILD_DIR)/keyboard_layout_us_test
+	$(BUILD_DIR)/keyboard_layout_us_test
 
 clean:
-	rm -rf $(BUILD_DIR) $(ISO)
+	rm -rf build rea-os.iso rea-os-us.iso

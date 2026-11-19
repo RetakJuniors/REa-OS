@@ -36,11 +36,13 @@ PS/2 klavye polling ile okunur ve yalnizca `print` komutu calisir.
 |   `-- util.c
 `-- tests/
     |-- font_test.c
+    |-- keyboard_layout_test.c
     `-- shell_test.c
 ```
 
-Derleme sirasinda `build/`, `limine/` ve `rea-os.iso` olusturulur; bunlar kaynak
-dosyalar degil, derleme ciktilaridir.
+Derleme sirasinda `build/`, `limine/` ve ISO dosyalari olusturulur; bunlar
+kaynak dosyalar degil, derleme ciktilaridir. Klavye duzeni `KEYBOARD_LAYOUT`
+ile secilir; secenekler ayri derleme klasorlerinde tutulur.
 
 ## Dosyalar ne yapiyor?
 
@@ -51,7 +53,7 @@ dosyalar degil, derleme ciktilaridir.
 | `src/console.c` | Siyah ekran, 8x16 yazi hucreleri ve ekran kaydirmayi yonetir. |
 | `src/font.c` | ASCII 32-126 icin projede tanimlanan 5x7 bitmap harfleri tutar. |
 | `src/keyboard.c` | PS/2 portlarindan kesmesiz, polling klavye okumasini yapar. |
-| `src/keyboard_layout.c` | Set-1 tarama kodlarini Turkce Q tus duzenine cevirir. |
+| `src/keyboard_layout.c` | Set-1 tarama kodlarini secilen Turkce Q veya US QWERTY duzenine cevirir. |
 | `src/shell.c` | Satiri toplar, Enter/Backspace islemlerini yapar, komutu bulur. |
 | `src/serial.c` | COM1 hazirsa hata ayiklama metnini gonderir; portu yapilandirmaz. |
 | `src/util.c` | C kutuphanesi olmadan gereken temel bellek/yazi fonksiyonlarini saglar. |
@@ -75,7 +77,9 @@ desenleri `font.c` dosyasinda tanimlidir ve her bitmap satiri iki piksel
 yuksekligine cizilir. Ekran alti dolunca onceki pikseller bir satir yukari
 kaydirilir.
 
-Turkce Q duzenindeki `Shift+2` duz tirnak (`"`) uretir. Turkceye ozel
+Varsayilan Turkce Q duzenindeki `Shift+2` duz tirnak (`"`) uretir. `US
+QWERTY` secenegi standart ABD tus isaretlerini kullanir; bu duzende tirnak
+`Shift+'` ile yazilir. Turkce Q duzenindeki Turkceye ozel
 `g, u, s, i, c` tuslari ASCII fontla sinirli oldugu icin ASCII karsiliklarini
 yazar; `i` kucuk harf, `I` buyuk harf olarak kullanilir. ASCII disi karakterler
 konsola alinmaz. Shift+3 ve benzeri isaretler yalnizca tablodaki ASCII
@@ -128,7 +132,14 @@ make
 
 Ilk derlemede Makefile resmi Limine `v8.7.0` ikili dagitimini `limine/` altina
 indirip yardimci aracini derler; bu asama icin internet gerekir. Basarili olunca
-`rea-os.iso` dosyasi olusur. Temiz derleme icin:
+``rea-os.iso` (Turkce Q) dosyasi olusur. US QWERTY ISO'su icin:
+
+```sh
+make KEYBOARD_LAYOUT=us
+```
+
+Bu komut `rea-os-us.iso` olusturur. Iki klavye duzeninin derleme dosyalari
+`build/tr/` ve `build/us/` altinda ayri tutulur. Temiz derleme icin:
 
 ```sh
 make clean
@@ -151,11 +162,13 @@ make test
    hard disk** secin.
 5. VM ayarlarinda **System > Motherboard** altinda **Enable EFI** kapaliysa
    BIOS; aciksa UEFI ile deneyin. ISO ikisini de destekler.
-6. **Storage** altinda optik surucuya `rea-os.iso` dosyasini takin.
+6. **Storage** altinda optik surucuya `rea-os.iso` (Turkce Q) veya
+   `rea-os-us.iso` (US QWERTY) dosyasini takin.
 7. **Display** altinda Video Memory degerini en az **16 MB** yapin. Grafik
    denetleyicisi varsayilan VMSVGA olabilir.
 8. **System > Processor** altinda 1 CPU yeterlidir; **Enable I/O APIC**
-   ayarini varsayilaninda birakin.
+   ayarini varsayilaninda birakin. **System > Acceleration** altinda
+   **Enable VT-x/AMD-V** acik olmali.
 9. Baslatin. Siyah ekranda `/> ` istemi gorunur. `print "merhaba"` yazip
    Enter'a basin.
 10. ISO'dan tekrar acmak icin VM'yi kapatin, optik surucudaki ISO'yu birakin
@@ -172,6 +185,7 @@ kullanilir.
 | `make` komutu bulunamiyor | Linux/WSL icin `sudo apt install build-essential` calistirin. |
 | `xorriso` bulunamiyor | `sudo apt install xorriso` kurun. |
 | Limine indirme hatasi | Interneti kontrol edip `make` komutunu yeniden calistirin. |
+| `This CPU does not support 64-bit mode` | Bu hata Limine'da, cekirdek calismaya baslamadan gorunur. VM kapaliyken surumunu **Other/Unknown (64-bit)** secin ve **System > Acceleration** altinda VT-x/AMD-V'i acin. Secenek yoksa ana bilgisayarin BIOS/UEFI ayarlarinda Intel VT-x veya AMD SVM'i etkinlestirip ana bilgisayari yeniden baslatin. Bu hata kendi basina diske yazildigi anlamina gelmez. |
 | ISO acilmiyor | VM turunu 64-bit Other yapin; once EFI kapali BIOS, sonra EFI acik UEFI deneyin. |
 | Siyah ekran, istem yok | VirtualBox ekran belleğini 16 MB yapin; makineyi tamamen kapatip tekrar acin. |
 | Klavye yazmiyor | VM penceresine tiklayip tuslari tekrar deneyin; VirtualBox'in klavyeyi yakaladigini kontrol edin. |
