@@ -20,6 +20,23 @@ struct limine_framebuffer_request {
     struct limine_framebuffer_response *response;
 };
 
+struct limine_hhdm_response {
+    uint64_t revision;
+    uint64_t offset;
+};
+
+struct limine_hhdm_request {
+    uint64_t id[4];
+    uint64_t revision;
+    struct limine_hhdm_response *response;
+};
+
+struct limine_memmap_request {
+    uint64_t id[4];
+    uint64_t revision;
+    struct limine_memmap_response *response;
+};
+
 __attribute__((used, section(".limine_requests_start")))
 static volatile uint64_t limine_requests_start[] = {
     0xf6b8f4b39de7d1ae,
@@ -37,6 +54,28 @@ static volatile struct limine_framebuffer_request framebuffer_request = {
         LIMINE_COMMON_MAGIC,
         0x9d5827dcd881dd75,
         0xa3148604f6fab11b
+    },
+    .revision = 0,
+    .response = 0
+};
+
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_hhdm_request hhdm_request = {
+    .id = {
+        LIMINE_COMMON_MAGIC,
+        0x48dcf1cb8ad2b852,
+        0x63984e959a98244b
+    },
+    .revision = 0,
+    .response = 0
+};
+
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_memmap_request memory_map_request = {
+    .id = {
+        LIMINE_COMMON_MAGIC,
+        0x67cf3d9d378a806f,
+        0xe304acdfc50c3c62
     },
     .revision = 0,
     .response = 0
@@ -76,5 +115,29 @@ int boot_get_framebuffer(struct limine_framebuffer **framebuffer)
     }
 
     *framebuffer = response->framebuffers[0];
+    return 1;
+}
+
+int boot_get_memory_map(const struct limine_memmap_response **memory_map,
+                        uint64_t *hhdm_offset)
+{
+    struct limine_memmap_response *response = memory_map_request.response;
+    struct limine_hhdm_response *hhdm = hhdm_request.response;
+
+    if (response == 0) {
+        serial_write("REA OS: memory map response NULL\r\n");
+        return 0;
+    }
+    if (response->entries == 0 || response->entry_count == 0) {
+        serial_write("REA OS: memory map entries unavailable\r\n");
+        return 0;
+    }
+    if (hhdm == 0) {
+        serial_write("REA OS: HHDM response NULL\r\n");
+        return 0;
+    }
+
+    *memory_map = response;
+    *hhdm_offset = hhdm->offset;
     return 1;
 }

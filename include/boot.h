@@ -23,6 +23,20 @@ struct limine_framebuffer {
     void **modes;
 };
 
+struct limine_memmap_entry {
+    uint64_t base;
+    uint64_t length;
+    uint64_t type;
+};
+
+struct limine_memmap_response {
+    uint64_t revision;
+    uint64_t entry_count;
+    struct limine_memmap_entry **entries;
+};
+
 int boot_get_framebuffer(struct limine_framebuffer **framebuffer);
+int boot_get_memory_map(const struct limine_memmap_response **memory_map,
+                        uint64_t *hhdm_offset);
 
 #endif

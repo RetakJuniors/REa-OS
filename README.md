@@ -1,11 +1,11 @@
-# REA OS - Adim 1
+# REA OS - Adim 2
 
-REA OS, x86_64 icin sifirdan yazilan egitim amacli bir cekirdek projesidir. Bu
-ilk adimda Limine ile BIOS/UEFI hibrit ISO acilir, framebuffer'a metin cizilir,
-PS/2 klavye polling ile okunur ve yalnizca `print` komutu calisir.
+REA OS, x86_64 icin sifirdan yazilan egitim amacli bir cekirdek projesidir.
+Limine BIOS/UEFI hibrit ISO'yu acar; cekirdek framebuffer'a metin cizer, PS/2
+klavyeyi okur, `print` komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir.
 
 > Bu proje deneyseldir. Sanal makinede ve sanal disksiz kullanin. Cekirdek
-> disk, ag ve USB surucusu icermez; diske yazma veya cihaz ayari degistirmez.
+> disk, ag ve USB surucusu icermez; diske yazma kodu yoktur.
 
 ## Proje agaci
 
@@ -21,22 +21,31 @@ PS/2 klavye polling ile okunur ve yalnizca `print` komutu calisir.
 |   |-- console.h
 |   |-- font.h
 |   |-- keyboard.h
+|   |-- memory.h
 |   |-- serial.h
 |   |-- shell.h
+|   |-- stat.h
+|   |-- timer.h
 |   `-- util.h
 |-- src/
 |   |-- boot.c
 |   |-- console.c
 |   |-- font.c
+|   |-- interrupts.S
 |   |-- kernel.c
 |   |-- keyboard.c
 |   |-- keyboard_layout.c
+|   |-- memory.c
 |   |-- serial.c
 |   |-- shell.c
+|   |-- stat.c
+|   |-- timer.c
 |   `-- util.c
 `-- tests/
     |-- font_test.c
     |-- keyboard_layout_test.c
+    |-- memory_test.c
+    |-- stat_test.c
     `-- shell_test.c
 ```
 
@@ -48,29 +57,32 @@ ile secilir; secenekler ayri derleme klasorlerinde tutulur.
 
 | Dosya | Aciklama |
 |---|---|
-| `src/kernel.c` | Cekirdegin baslangicini yapar ve klavyeyi surekli kontrol eder. |
-| `src/boot.c` | Limine protokolunu bildirir ve framebuffer bilgisini alir. |
+| `src/kernel.c` | Framebuffer, RAM yoneticisi ve zamanlayiciyi baslatir; klavyeyi okur. |
+| `src/boot.c` | Limine framebuffer, memory map ve HHDM yanitlarini alir. |
 | `src/console.c` | Siyah ekran, 8x16 yazi hucreleri ve ekran kaydirmayi yonetir. |
 | `src/font.c` | ASCII 32-126 icin projede tanimlanan 5x7 bitmap harfleri tutar. |
 | `src/keyboard.c` | PS/2 portlarindan kesmesiz, polling klavye okumasini yapar. |
 | `src/keyboard_layout.c` | Set-1 tarama kodlarini secilen Turkce Q veya US QWERTY duzenine cevirir. |
+| `src/memory.c` | Limine usable RAM bolgelerini bitmap tabanli fiziksel sayfa yoneticisine aktarir. |
+| `src/timer.c` | PIT'i 100 Hz ayarlar, IDT/PIC ile kesme alir ve son 5 saniyeyi olcer. |
+| `src/interrupts.S` | Timer kesmesinde yazmaclari koruyup C kesme isleyicisini cagirir. |
 | `src/shell.c` | Satiri toplar, Enter/Backspace islemlerini yapar, komutu bulur. |
+| `src/stat.c` | `stat -cpu`, `stat -ram` ve `stat all` ciktilarini uretir. |
 | `src/serial.c` | COM1 hazirsa hata ayiklama metnini gonderir; portu yapilandirmaz. |
 | `src/util.c` | C kutuphanesi olmadan gereken temel bellek/yazi fonksiyonlarini saglar. |
 | `include/` | C dosyalarinin ortak fonksiyon bildirimlerini icerir. |
 | `limine.conf` | Limine'a ISO'dan hangi cekirdek dosyasini acacagini soyler. |
 | `linker.ld` | Cekirdek ve Limine isteklerinin bellek yerlesimini tanimlar. |
-| `Makefile` | C dosyalarini derler ve BIOS/UEFI hibrit ISO olusturur. |
+| `Makefile` | C ve assembly dosyalarini derler, BIOS/UEFI hibrit ISO olusturur. |
 
 ### Onemli kod akisi
 
-1. `kmain()` framebuffer'i hazirlar, `/ >` degil tam olarak `/> ` istemini basar.
-2. `keyboard_poll_char()` PS/2 durum portunu okuyup hazir tus tarama kodunu alir.
+1. `kmain()` framebuffer'i, memory map tabanli sayfa yoneticisini ve PIT'i baslatir.
+2. Klavye girdisi yokken cekirdek `hlt` ile bekler; PIT kesmesi en gec 10 ms sonra uyandirip klavye polling'i surdurur.
 3. Tus haritasi tarama kodunu ASCII karaktere cevirir; Shift ve Caps Lock uygulanir.
-4. Enter satiri `shell.c` icindeki komut tablosuna verir. Tabloda yalnizca `print` vardir.
-5. `print` yalnizca tirnak icindeki ASCII metni ekrana basar. Tirnak eksikse
-   `Error: expected quoted text` yazar; bilinmeyen komut tam olarak
-   `Unknown command` yazar.
+4. Enter satiri komut tablosuna gider. Tabloda yalnizca `print` ve `stat` vardir.
+5. `stat -cpu` son 5 saniyedeki PIT kesmelerinde cekirdegin `hlt` beklemesinde olup olmadigina gore CPU kullanimini yaklasik hesaplar.
+6. `stat -ram`, memory map'teki tam usable sayfalari ve bitmap allocator durumunu raporlar.
 
 Bitmap yazilar yatayda 8 piksel, dikeyde 16 piksel kullanir. Harflerin 5x7
 desenleri `font.c` dosyasinda tanimlidir ve her bitmap satiri iki piksel
@@ -84,6 +96,12 @@ QWERTY` secenegi standart ABD tus isaretlerini kullanir; bu duzende tirnak
 yazar; `i` kucuk harf, `I` buyuk harf olarak kullanilir. ASCII disi karakterler
 konsola alinmaz. Shift+3 ve benzeri isaretler yalnizca tablodaki ASCII
 karsiliklar kadar desteklenir.
+
+RAM toplami Limine memory map'indeki tam sayfa hizasina alinmis `usable`
+bolgelerden hesaplanir. Ayiricinin bitmap'i icin kullanilan sayfalar da
+"kullanilan" sayilir. CPU yuzdesi, 100 Hz PIT kesmelerinde cekirdegin `hlt`
+beklemesinde olup olmadigina gore bes saniyelik kayan pencerede tahmin edilir;
+bu, genel amacli bir isletim sistemindeki tam CPU muhasebesi degildir.
 
 ## Gereken araclar
 
@@ -132,7 +150,7 @@ make
 
 Ilk derlemede Makefile resmi Limine `v8.7.0` ikili dagitimini `limine/` altina
 indirip yardimci aracini derler; bu asama icin internet gerekir. Basarili olunca
-``rea-os.iso` (Turkce Q) dosyasi olusur. US QWERTY ISO'su icin:
+`rea-os.iso` (Turkce Q) dosyasi olusur. US QWERTY ISO'su icin:
 
 ```sh
 make KEYBOARD_LAYOUT=us
@@ -146,7 +164,7 @@ make clean
 make
 ```
 
-Kabuk ve ASCII bitmap yazılarını sınamak için:
+Kabuk, ASCII bitmap fontu, stat ciktisi ve fiziksel sayfa ayiricisini sinamak icin:
 
 ```sh
 make test
@@ -170,7 +188,7 @@ make test
    ayarini varsayilaninda birakin. **System > Acceleration** altinda
    **Enable VT-x/AMD-V** acik olmali.
 9. Baslatin. Siyah ekranda `/> ` istemi gorunur. `print "merhaba"` yazip
-   Enter'a basin.
+   Enter'a basin; RAM ve CPU icin `stat all` kullanin.
 10. ISO'dan tekrar acmak icin VM'yi kapatin, optik surucudaki ISO'yu birakin
     ve yeniden baslatin. Sanal disk gerekmez.
 
@@ -191,6 +209,8 @@ kullanilir.
 | Klavye yazmiyor | VM penceresine tiklayip tuslari tekrar deneyin; VirtualBox'in klavyeyi yakaladigini kontrol edin. |
 | `print` bilinmiyor | Komutu ASCII kucuk harfle yazin: `print "merhaba"`. |
 | `Error: expected quoted text` | Metni iki duz cift tirnak arasina alin: `print "merhaba"`. |
+| `RAM: unavailable` | Limine memory map veya HHDM yaniti alinmamistir; seri porttaki `REA OS:` hata satirlarini kontrol edin. |
+| `stat -cpu` hep `%0` gosteriyor | Bu adimda baska calisan gorev yoktur; oran son 5 saniyedeki PIT/`hlt` orneklerinden tahmindir. |
 | Turkce harf ekranda yok/degisik | Bu adim ASCII ile sinirlidir; Turkce ozel harfler ASCII karsiliklarina cevrilir. |
 
 ## Komut defteri
@@ -198,6 +218,8 @@ kullanilir.
 | Komut | Kullanim | Davranis |
 |---|---|---|
 | `print` | `print "yazi"` | Tirnak icindeki metni yazar. Tirnak yoksa/kusurluysa kisa hata mesaji verir. |
+| `stat` | `stat -cpu`, `stat -ram`, `stat all` | CPU yuzdesini, usable RAM toplam/kullanilan/bos miktarini veya ikisini birlikte gosterir. |
 
-Bunun disindaki her komut `Unknown command` yazar. Bu adimda `help`, `clear`,
-`ls`, `cd`, `echo` veya baska bir komut bulunmaz.
+Bunun disindaki her komut `Unknown command` yazar. `stat` icin gecersiz secenek
+kisa kullanim satiri gosterir. `help`, `clear`, `ls`, `cd`, `echo` veya baska
+bir komut bulunmaz.

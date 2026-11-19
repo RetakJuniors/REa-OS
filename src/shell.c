@@ -3,6 +3,7 @@
 #include "console.h"
 #include "keyboard.h"
 #include "serial.h"
+#include "stat.h"
 
 #include <stddef.h>
 
@@ -57,7 +58,8 @@ static void command_print(const char *arguments)
 }
 
 static const struct command commands[] = {
-    { "print", command_print }
+    { "print", command_print },
+    { "stat", stat_command }
 };
 
 static void execute_command(void)

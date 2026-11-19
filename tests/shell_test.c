@@ -3,6 +3,14 @@
 #include <stdio.h>
 #include <string.h>
 
+static unsigned int stat_calls;
+
+void stat_command(const char *arguments)
+{
+    (void)arguments;
+    ++stat_calls;
+}
+
 static char screen_output[2048];
 static size_t screen_length;
 
@@ -77,6 +85,15 @@ int main(void)
         "trailing spaces",
         "print \"hello\"  ",
         "/> print \"hello\"  \nhello\n/> ");
+    unsigned int previous_stat_calls = stat_calls;
+    failures += run_case(
+        "stat dispatch",
+        "stat -cpu",
+        "/> stat -cpu\n/> ");
+    if (stat_calls != previous_stat_calls + 1) {
+        fputs("stat command was not dispatched\n", stderr);
+        ++failures;
+    }
 
     if (failures != 0) {
         return 1;
