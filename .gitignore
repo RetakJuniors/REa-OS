@@ -1,0 +1,5 @@
+/build/
+/limine/
+/rea-os.iso
+*.o
+*.elf
