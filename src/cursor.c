@@ -15,6 +15,18 @@ static int64_t pointer_y;
 static int initialized;
 static int drawn;
 
+static uint16_t display_dimension(uint16_t source_dimension)
+{
+    return (uint16_t)((source_dimension + CURSOR_DISPLAY_SCALE - 1) /
+                      CURSOR_DISPLAY_SCALE);
+}
+
+static uint16_t display_hotspot(uint16_t source_hotspot)
+{
+    return (uint16_t)((source_hotspot + CURSOR_DISPLAY_SCALE / 2) /
+                      CURSOR_DISPLAY_SCALE);
+}
+
 static uint8_t expand_channel(uint32_t pixel, uint8_t shift, uint8_t size)
 {
     uint32_t maximum = (1u << size) - 1;
@@ -46,31 +58,75 @@ static uint32_t *framebuffer_pixel(size_t x, size_t y)
 
 static int64_t image_left(void)
 {
-    return pointer_x - active_image->hotspot_x;
+    return pointer_x - display_hotspot(active_image->hotspot_x);
 }
 
 static int64_t image_top(void)
 {
-    return pointer_y - active_image->hotspot_y;
+    return pointer_y - display_hotspot(active_image->hotspot_y);
+}
+
+static uint32_t downsample_pixel(uint16_t column, uint16_t row)
+{
+    uint32_t alpha_sum = 0;
+    uint32_t red_sum = 0;
+    uint32_t green_sum = 0;
+    uint32_t blue_sum = 0;
+    uint32_t sample_count = 0;
+    uint16_t source_x = column * CURSOR_DISPLAY_SCALE;
+    uint16_t source_y = row * CURSOR_DISPLAY_SCALE;
+
+    for (uint16_t y = 0; y < CURSOR_DISPLAY_SCALE; ++y) {
+        for (uint16_t x = 0; x < CURSOR_DISPLAY_SCALE; ++x) {
+            uint16_t pixel_x = source_x + x;
+            uint16_t pixel_y = source_y + y;
+            if (pixel_x >= active_image->width ||
+                pixel_y >= active_image->height) {
+                continue;
+            }
+
+            uint32_t pixel =
+                active_image->argb[(size_t)pixel_y * active_image->width +
+                                   pixel_x];
+            uint32_t alpha = pixel >> 24;
+            alpha_sum += alpha;
+            red_sum += ((pixel >> 16) & 0xff) * alpha;
+            green_sum += ((pixel >> 8) & 0xff) * alpha;
+            blue_sum += (pixel & 0xff) * alpha;
+            ++sample_count;
+        }
+    }
+
+    if (alpha_sum == 0 || sample_count == 0) {
+        return 0;
+    }
+
+    uint32_t alpha = (alpha_sum + sample_count / 2) / sample_count;
+    uint32_t red = (red_sum + alpha_sum / 2) / alpha_sum;
+    uint32_t green = (green_sum + alpha_sum / 2) / alpha_sum;
+    uint32_t blue = (blue_sum + alpha_sum / 2) / alpha_sum;
+    return (alpha << 24) | (red << 16) | (green << 8) | blue;
 }
 
 static void restore_pixels(void)
 {
     int64_t left = image_left();
     int64_t top = image_top();
+    uint16_t width = display_dimension(active_image->width);
+    uint16_t height = display_dimension(active_image->height);
 
-    for (uint16_t row = 0; row < active_image->height; ++row) {
+    for (uint16_t row = 0; row < height; ++row) {
         int64_t y = top + row;
         if (y < 0 || (uint64_t)y >= framebuffer->height) {
             continue;
         }
-        for (uint16_t column = 0; column < active_image->width; ++column) {
+        for (uint16_t column = 0; column < width; ++column) {
             int64_t x = left + column;
             if (x < 0 || (uint64_t)x >= framebuffer->width) {
                 continue;
             }
             *framebuffer_pixel((size_t)x, (size_t)y) =
-                saved_pixels[(size_t)row * active_image->width + column];
+                saved_pixels[(size_t)row * width + column];
         }
     }
 }
@@ -105,12 +161,14 @@ static void draw_pixels(void)
 {
     int64_t left = image_left();
     int64_t top = image_top();
+    uint16_t width = display_dimension(active_image->width);
+    uint16_t height = display_dimension(active_image->height);
 
-    for (uint16_t row = 0; row < active_image->height; ++row) {
+    for (uint16_t row = 0; row < height; ++row) {
         int64_t y = top + row;
-        for (uint16_t column = 0; column < active_image->width; ++column) {
+        for (uint16_t column = 0; column < width; ++column) {
             int64_t x = left + column;
-            size_t index = (size_t)row * active_image->width + column;
+            size_t index = (size_t)row * width + column;
             if (x < 0 || y < 0 || (uint64_t)x >= framebuffer->width ||
                 (uint64_t)y >= framebuffer->height) {
                 continue;
@@ -118,7 +176,7 @@ static void draw_pixels(void)
 
             uint32_t *pixel = framebuffer_pixel((size_t)x, (size_t)y);
             saved_pixels[index] = *pixel;
-            uint32_t argb = active_image->argb[index];
+            uint32_t argb = downsample_pixel(column, row);
             if ((argb >> 24) != 0) {
                 *pixel = blend_pixel(argb, *pixel);
             }

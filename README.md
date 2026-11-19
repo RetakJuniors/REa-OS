@@ -111,9 +111,9 @@ ile secilir; secenekler ayri derleme klasorlerinde tutulur.
 
 Komut isteminin sonunda yaklasik her 500 ms'de bir gorunup kaybolan dikey blok
 vardir. PIT'in 100 Hz tikleri kullanilir; baska bir zamanlayici veya komut
-eklenmez. Fare oku ekran ortasinda baslar, hotspot'a gore yerlestirilir ve
-hareket ettikce altindaki pikselleri saklayip geri yukler. Sol, sag ve orta
-dugme durumu bellekte tutulur; tiklama davranisi yoktur.
+eklenmez. 64x64 fare oku ekranda yarim boyutta (32x32) cizilir, hotspot'a gore
+yerlestirilir ve hareket ettikce altindaki pikselleri saklayip geri yukler. Sol,
+sag ve orta dugme durumu bellekte tutulur; tiklama davranisi yoktur.
 
 Inter TTF dosyasi yalnizca derleme oncesinde Python betigiyle okunur. Cekirdek
 TTF ayrıştırma yapmaz: gliflerin alpha piksellerini, olculerini ve taban cizgisi

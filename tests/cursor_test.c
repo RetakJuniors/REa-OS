@@ -45,16 +45,65 @@ static int framebuffer_is_black(void)
     return 1;
 }
 
+static uint32_t downsample_pixel(const struct cursor_image *image,
+                                uint16_t column, uint16_t row)
+{
+    uint32_t alpha_sum = 0;
+    uint32_t red_sum = 0;
+    uint32_t green_sum = 0;
+    uint32_t blue_sum = 0;
+    uint32_t sample_count = 0;
+    uint16_t source_x = column * CURSOR_DISPLAY_SCALE;
+    uint16_t source_y = row * CURSOR_DISPLAY_SCALE;
+
+    for (uint16_t y = 0; y < CURSOR_DISPLAY_SCALE; ++y) {
+        for (uint16_t x = 0; x < CURSOR_DISPLAY_SCALE; ++x) {
+            uint16_t pixel_x = source_x + x;
+            uint16_t pixel_y = source_y + y;
+            if (pixel_x >= image->width || pixel_y >= image->height) {
+                continue;
+            }
+            uint32_t pixel =
+                image->argb[(size_t)pixel_y * image->width + pixel_x];
+            uint32_t alpha = pixel >> 24;
+            alpha_sum += alpha;
+            red_sum += ((pixel >> 16) & 0xff) * alpha;
+            green_sum += ((pixel >> 8) & 0xff) * alpha;
+            blue_sum += (pixel & 0xff) * alpha;
+            ++sample_count;
+        }
+    }
+
+    if (alpha_sum == 0 || sample_count == 0) {
+        return 0;
+    }
+    uint32_t alpha = (alpha_sum + sample_count / 2) / sample_count;
+    uint32_t red = (red_sum + alpha_sum / 2) / alpha_sum;
+    uint32_t green = (green_sum + alpha_sum / 2) / alpha_sum;
+    uint32_t blue = (blue_sum + alpha_sum / 2) / alpha_sum;
+    return (alpha << 24) | (red << 16) | (green << 8) | blue;
+}
+
 static int verify_default_pixels(const struct cursor_image *image,
                                  int32_t pointer_x, int32_t pointer_y)
 {
-    int64_t left = (int64_t)pointer_x - image->hotspot_x;
-    int64_t top = (int64_t)pointer_y - image->hotspot_y;
+    uint16_t width = (uint16_t)((image->width + CURSOR_DISPLAY_SCALE - 1) /
+                                CURSOR_DISPLAY_SCALE);
+    uint16_t height = (uint16_t)((image->height + CURSOR_DISPLAY_SCALE - 1) /
+                                 CURSOR_DISPLAY_SCALE);
+    uint16_t hotspot_x = (uint16_t)((image->hotspot_x +
+                                     CURSOR_DISPLAY_SCALE / 2) /
+                                    CURSOR_DISPLAY_SCALE);
+    uint16_t hotspot_y = (uint16_t)((image->hotspot_y +
+                                     CURSOR_DISPLAY_SCALE / 2) /
+                                    CURSOR_DISPLAY_SCALE);
+    int64_t left = (int64_t)pointer_x - hotspot_x;
+    int64_t top = (int64_t)pointer_y - hotspot_y;
     int visible_pixel_found = 0;
 
-    for (uint16_t row = 0; row < image->height; ++row) {
-        for (uint16_t column = 0; column < image->width; ++column) {
-            uint32_t source = image->argb[(size_t)row * image->width + column];
+    for (uint16_t row = 0; row < height; ++row) {
+        for (uint16_t column = 0; column < width; ++column) {
+            uint32_t source = downsample_pixel(image, column, row);
             uint8_t alpha = (uint8_t)(source >> 24);
             int64_t x = left + column;
             int64_t y = top + row;
@@ -90,7 +139,11 @@ int main(void)
 
     if (images == 0 || image_count != CURSOR_IMAGE_COUNT ||
         default_image == 0 || strcmp(default_image->name, "arrow.png") != 0 ||
-        default_image->hotspot_x != 22 || default_image->hotspot_y != 1) {
+        default_image->hotspot_x != 22 || default_image->hotspot_y != 1 ||
+        (default_image->width + CURSOR_DISPLAY_SCALE - 1) /
+                CURSOR_DISPLAY_SCALE != 32 ||
+        (default_image->height + CURSOR_DISPLAY_SCALE - 1) /
+                CURSOR_DISPLAY_SCALE != 32) {
         fputs("Default cursor or hotspot is incorrect\n", stderr);
         return 1;
     }
