@@ -93,6 +93,9 @@ void console_init(void)
         framebuffer->red_mask_size == 0 ||
         framebuffer->green_mask_size == 0 ||
         framebuffer->blue_mask_size == 0) {
+        /* Use COM1 for diagnostics if the framebuffer could not be obtained. */
+        extern void serial_write(const char *text);
+        serial_write("REA OS: framebuffer unavailable\r\n");
         for (;;) {
             __asm__ volatile ("pause");
         }
