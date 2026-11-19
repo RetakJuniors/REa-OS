@@ -72,12 +72,16 @@ $(ISO): $(KERNEL) $(LIMINE_DIR)/limine limine.conf
 iso: $(ISO)
 
 test: | $(BUILD_DIR)
-	$(CC) -std=c11 -Wall -Wextra -Werror -Iinclude \
+	$(CC) -std=c11 -Wall -Wextra -Werror -Iinclude -Isrc \
 		tests/shell_test.c src/shell.c -o $(BUILD_DIR)/shell_test
 	$(BUILD_DIR)/shell_test
-	$(CC) -std=c11 -Wall -Wextra -Werror -Iinclude \
+	$(CC) -std=c11 -Wall -Wextra -Werror -Iinclude -Isrc \
 		tests/font_test.c src/font.c -o $(BUILD_DIR)/font_test
 	$(BUILD_DIR)/font_test
+	$(CC) -std=c11 -Wall -Wextra -Werror -Iinclude -Isrc \
+		tests/console_test.c src/console.c src/font.c src/util.c \
+		-o $(BUILD_DIR)/console_test
+	$(BUILD_DIR)/console_test
 	$(CC) -std=c11 -Wall -Wextra -Werror -DREA_KEYBOARD_LAYOUT_TR -Iinclude \
 		tests/keyboard_layout_test.c src/keyboard_layout.c \
 		-o $(BUILD_DIR)/keyboard_layout_tr_test

@@ -1,4 +1,4 @@
-# REA OS - Adim 2
+# REA OS - Adim 2 (Inter Font)
 
 REA OS, x86_64 icin sifirdan yazilan egitim amacli bir cekirdek projesidir.
 Limine BIOS/UEFI hibrit ISO'yu acar; cekirdek framebuffer'a metin cizer, PS/2
@@ -16,10 +16,12 @@ klavyeyi okur, `print` komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir
 |-- README.md
 |-- limine.conf
 |-- linker.ld
+|-- fonts/
+|   |-- Inter_18pt-Regular.ttf
+|   `-- OFL.txt
 |-- include/
 |   |-- boot.h
 |   |-- console.h
-|   |-- font.h
 |   |-- keyboard.h
 |   |-- memory.h
 |   |-- serial.h
@@ -31,6 +33,7 @@ klavyeyi okur, `print` komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir
 |   |-- boot.c
 |   |-- console.c
 |   |-- font.c
+|   |-- font.h
 |   |-- interrupts.S
 |   |-- kernel.c
 |   |-- keyboard.c
@@ -42,11 +45,14 @@ klavyeyi okur, `print` komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir
 |   |-- timer.c
 |   `-- util.c
 `-- tests/
-    |-- font_test.c
-    |-- keyboard_layout_test.c
-    |-- memory_test.c
-    |-- stat_test.c
-    `-- shell_test.c
+|   |-- console_test.c
+|   |-- font_test.c
+|   |-- keyboard_layout_test.c
+|   |-- memory_test.c
+|   |-- stat_test.c
+|   `-- shell_test.c
+`-- tools/
+    `-- ttf2c.py
 ```
 
 Derleme sirasinda `build/`, `limine/` ve ISO dosyalari olusturulur; bunlar
@@ -59,8 +65,10 @@ ile secilir; secenekler ayri derleme klasorlerinde tutulur.
 |---|---|
 | `src/kernel.c` | Framebuffer, RAM yoneticisi ve zamanlayiciyi baslatir; klavyeyi okur. |
 | `src/boot.c` | Limine framebuffer, memory map ve HHDM yanitlarini alir. |
-| `src/console.c` | Siyah ekran, 8x16 yazi hucreleri ve ekran kaydirmayi yonetir. |
-| `src/font.c` | ASCII 32-126 icin projede tanimlanan 5x7 bitmap harfleri tutar. |
+| `tools/ttf2c.py` | Pillow ile TTF gliflerini build-time alpha piksel tablosuna cevirir. |
+| `src/font.c` | Betigin olusturdugu salt okunur Inter glifleri ve ikili aramayi tutar. |
+| `src/font.h` | Glif boyutlari, bearing, advance ve font metriklerini bildirir. |
+| `src/console.c` | UTF-8 metni alpha karistirmayla cizer; orantili satir ve imleci yonetir. |
 | `src/keyboard.c` | PS/2 portlarindan kesmesiz, polling klavye okumasini yapar. |
 | `src/keyboard_layout.c` | Set-1 tarama kodlarini secilen Turkce Q veya US QWERTY duzenine cevirir. |
 | `src/memory.c` | Limine usable RAM bolgelerini bitmap tabanli fiziksel sayfa yoneticisine aktarir. |
@@ -84,10 +92,13 @@ ile secilir; secenekler ayri derleme klasorlerinde tutulur.
 5. `stat -cpu` son 5 saniyedeki PIT kesmelerinde cekirdegin `hlt` beklemesinde olup olmadigina gore CPU kullanimini yaklasik hesaplar.
 6. `stat -ram`, memory map'teki tam usable sayfalari ve bitmap allocator durumunu raporlar.
 
-Bitmap yazilar yatayda 8 piksel, dikeyde 16 piksel kullanir. Harflerin 5x7
-desenleri `font.c` dosyasinda tanimlidir ve her bitmap satiri iki piksel
-yuksekligine cizilir. Ekran alti dolunca onceki pikseller bir satir yukari
-kaydirilir.
+Inter TTF dosyasi yalnizca derleme oncesinde Python betigiyle okunur. Cekirdek
+TTF ayrıştırma yapmaz: gliflerin alpha piksellerini, olculerini ve taban cizgisi
+bilgilerini salt okunur C dizilerinden alir. Ekran ciktilari UTF-8 olarak
+cozulur; bozuk UTF-8 dizisi `?` olarak cizilir. Glifler orantili yerlestirilir
+ve ekran fontun satir yuksekligi kadar kaydirilir. Komut isteminin sonunda
+yanip sonmeyen dikey blok imlec bulunur; Backspace son girilen glifin advance
+degeri kadar geri gider.
 
 Varsayilan Turkce Q duzenindeki `Shift+2` duz tirnak (`"`) uretir. `US
 QWERTY` secenegi standart ABD tus isaretlerini kullanir; bu duzende tirnak
@@ -115,7 +126,7 @@ Ubuntu/Debian:
 
 ```sh
 sudo apt update
-sudo apt install build-essential xorriso git
+sudo apt install build-essential xorriso git python3 python3-pil
 ```
 
 Fedora:
@@ -133,7 +144,7 @@ sudo dnf install gcc make xorriso git
 
 ```sh
 sudo apt update
-sudo apt install build-essential xorriso git
+sudo apt install build-essential xorriso git python3 python3-pil
 ```
 
 Projeyi WSL Linux dosya sisteminde tutun (ornegin `~/rea-os`). ISO'yu WSL
@@ -145,12 +156,22 @@ icerisinde olusturup VirtualBox'a Windows tarafindan gostermek icin dosyayi
 Proje klasorunde:
 
 ```sh
+python3 tools/ttf2c.py --font fonts/Inter_18pt-Regular.ttf --size 16
 make
 ```
 
+Betik varsayilan olarak `fonts/Inter-Regular.ttf` dosyasini arar; bu depodaki
+fontun gercek adi `Inter_18pt-Regular.ttf` oldugundan komutta `--font` verilir.
+Boyut varsayilani 16 pikseldir. Betik `src/font.c` ile `src/font.h` dosyalarini
+yeniden uretir. Pillow yoksa Ubuntu/WSL icin `sudo apt install python3-pil`
+kurun. Mevcut dosyalar 95 ASCII, 96 Latin-1 ve 128 Latin Extended-A glifinden
+olusan 319 karakteri kapsar; fontta bulunmayan glifleri betik uyarir ve `?`
+resmini kullanir.
+
 Ilk derlemede Makefile resmi Limine `v8.7.0` ikili dagitimini `limine/` altina
 indirip yardimci aracini derler; bu asama icin internet gerekir. Basarili olunca
-`rea-os.iso` (Turkce Q) dosyasi olusur. US QWERTY ISO'su icin:
+`rea-os.iso` (Turkce Q) dosyasi olusur. Fontu degistirmediysen her derlemede
+betigi yeniden calistirmak gerekmez. US QWERTY ISO'su icin:
 
 ```sh
 make KEYBOARD_LAYOUT=us
@@ -209,6 +230,9 @@ kullanilir.
 | Klavye yazmiyor | VM penceresine tiklayip tuslari tekrar deneyin; VirtualBox'in klavyeyi yakaladigini kontrol edin. |
 | `print` bilinmiyor | Komutu ASCII kucuk harfle yazin: `print "merhaba"`. |
 | `Error: expected quoted text` | Metni iki duz cift tirnak arasina alin: `print "merhaba"`. |
+| `No module named PIL` | Ubuntu/WSL icin `sudo apt install python3-pil`; diger sistemlerde `python3 -m pip install Pillow`. |
+| `font file not found` | Var olan adla `--font fonts/Inter_18pt-Regular.ttf` secenegini verin. |
+| Glif uyarisi | Betik desteklenen aralikta fontta olmayan codepoint'i bildirir ve bu glifi `?` sekline cevirir. |
 | `RAM: unavailable` | Limine memory map veya HHDM yaniti alinmamistir; seri porttaki `REA OS:` hata satirlarini kontrol edin. |
 | `stat -cpu` hep `%0` gosteriyor | Bu adimda baska calisan gorev yoktur; oran son 5 saniyedeki PIT/`hlt` orneklerinden tahmindir. |
 | Turkce harf ekranda yok/degisik | Bu adim ASCII ile sinirlidir; Turkce ozel harfler ASCII karsiliklarina cevrilir. |

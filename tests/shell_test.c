@@ -1,9 +1,22 @@
 #include "shell.h"
+#include "font.h"
 
 #include <stdio.h>
 #include <string.h>
 
 static unsigned int stat_calls;
+static size_t test_cursor_x;
+static size_t test_cursor_y;
+
+static const struct glyph test_glyph = {
+    .codepoint = '?',
+    .width = 8,
+    .height = 16,
+    .bearing_x = 0,
+    .bearing_y = 12,
+    .advance = 8,
+    .alpha = 0
+};
 
 void stat_command(const char *arguments)
 {
@@ -27,6 +40,12 @@ void console_putc(char character)
         screen_output[screen_length++] = character;
         screen_output[screen_length] = '\0';
     }
+    if (character == '\n') {
+        test_cursor_x = 0;
+        test_cursor_y += 16;
+    } else {
+        test_cursor_x += 8;
+    }
 }
 
 void console_write(const char *text)
@@ -34,6 +53,43 @@ void console_write(const char *text)
     while (*text != '\0') {
         console_putc(*text++);
     }
+}
+
+void console_write_n(const char *text, size_t length)
+{
+    for (size_t index = 0; index < length; ++index) {
+        console_putc(text[index]);
+    }
+}
+
+void console_get_cursor_position(size_t *x, size_t *y)
+{
+    *x = test_cursor_x;
+    *y = test_cursor_y;
+}
+
+void console_erase_input(size_t x, size_t y, uint16_t advance)
+{
+    (void)advance;
+    test_cursor_x = x;
+    test_cursor_y = y;
+    if (screen_length != 0) {
+        screen_output[--screen_length] = '\0';
+    }
+}
+
+void console_cursor_show(void)
+{
+}
+
+void console_cursor_hide(void)
+{
+}
+
+const struct glyph *font_get_glyph(uint32_t codepoint)
+{
+    (void)codepoint;
+    return &test_glyph;
 }
 
 void serial_write(const char *text)
@@ -45,6 +101,8 @@ static int run_case(const char *name, const char *input, const char *expected)
 {
     screen_length = 0;
     screen_output[0] = '\0';
+    test_cursor_x = 0;
+    test_cursor_y = 0;
     shell_init();
 
     while (*input != '\0') {

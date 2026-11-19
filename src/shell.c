@@ -1,6 +1,7 @@
 #include "shell.h"
 
 #include "console.h"
+#include "font.h"
 #include "keyboard.h"
 #include "serial.h"
 #include "stat.h"
@@ -16,6 +17,9 @@ struct command {
 
 static char command_line[SHELL_LINE_CAPACITY];
 static size_t command_length;
+static size_t command_glyph_x[SHELL_LINE_CAPACITY];
+static size_t command_glyph_y[SHELL_LINE_CAPACITY];
+static uint16_t command_glyph_advance[SHELL_LINE_CAPACITY];
 
 static void print_error(void)
 {
@@ -48,8 +52,9 @@ static void command_print(const char *arguments)
         return;
     }
 
+    size_t output_length = (size_t)(end - (arguments + 1));
+    console_write_n(arguments + 1, output_length);
     for (const char *character = arguments + 1; character < end; ++character) {
-        console_putc(*character);
         char output[2] = { *character, '\0' };
         serial_write(output);
     }
@@ -115,6 +120,7 @@ static void show_prompt(void)
 {
     console_write("/> ");
     serial_write("/> ");
+    console_cursor_show();
 }
 
 void shell_init(void)
@@ -126,6 +132,7 @@ void shell_init(void)
 void shell_handle_char(char character)
 {
     if (character == '\n') {
+        console_cursor_hide();
         console_putc('\n');
         serial_write("\r\n");
         execute_command();
@@ -136,9 +143,13 @@ void shell_handle_char(char character)
 
     if (character == '\b') {
         if (command_length != 0) {
+            console_cursor_hide();
             --command_length;
-            console_putc('\b');
+            console_erase_input(command_glyph_x[command_length],
+                                command_glyph_y[command_length],
+                                command_glyph_advance[command_length]);
             serial_write("\b \b");
+            console_cursor_show();
         }
         return;
     }
@@ -148,8 +159,15 @@ void shell_handle_char(char character)
         return;
     }
 
+    console_cursor_hide();
+    size_t glyph_index = command_length;
+    console_get_cursor_position(&command_glyph_x[glyph_index],
+                                &command_glyph_y[glyph_index]);
+    command_glyph_advance[glyph_index] =
+        font_get_glyph((uint8_t)character)->advance;
     command_line[command_length++] = character;
     console_putc(character);
     char output[2] = { character, '\0' };
     serial_write(output);
+    console_cursor_show();
 }
