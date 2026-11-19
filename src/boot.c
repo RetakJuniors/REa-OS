@@ -1,9 +1,12 @@
 #include "boot.h"
+#include "serial.h"
 
 #include <stdint.h>
 
 #define LIMINE_BASE_REVISION(N) \
     { 0xf9562b2d5c95a6c8, 0x6a7b384944536bdc, (N) }
+#define LIMINE_COMMON_MAGIC \
+    0xc7b1dd30df4c8b88, 0x0a82e883a194f07b
 
 struct limine_framebuffer_response {
     uint64_t revision;
@@ -26,15 +29,14 @@ static volatile uint64_t limine_requests_start[] = {
 };
 
 __attribute__((used, section(".limine_requests")))
-static volatile uint64_t limine_base_revision[] = LIMINE_BASE_REVISION(0);
+static volatile uint64_t limine_base_revision[] = LIMINE_BASE_REVISION(3);
 
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_framebuffer_request framebuffer_request = {
     .id = {
+        LIMINE_COMMON_MAGIC,
         0x9d5827dcd881dd75,
-        0xa3148604f6fab11b,
-        0,
-        0
+        0xa3148604f6fab11b
     },
     .revision = 0,
     .response = 0
@@ -48,11 +50,28 @@ static volatile uint64_t limine_requests_end[] = {
 
 int boot_get_framebuffer(struct limine_framebuffer **framebuffer)
 {
+    if (limine_base_revision[2] != 0) {
+        serial_write("REA OS: Limine base revision unsupported\r\n");
+        return 0;
+    }
+
+    serial_write("REA OS: Limine base revision supported\r\n");
     struct limine_framebuffer_response *response = framebuffer_request.response;
 
-    if (limine_base_revision[2] != 0 || response == 0 ||
-        response->framebuffer_count == 0 || response->framebuffers == 0 ||
-        response->framebuffers[0] == 0) {
+    if (response == 0) {
+        serial_write("REA OS: framebuffer response NULL\r\n");
+        return 0;
+    }
+    if (response->framebuffer_count == 0) {
+        serial_write("REA OS: framebuffer_count is 0\r\n");
+        return 0;
+    }
+    if (response->framebuffers == 0) {
+        serial_write("REA OS: framebuffer array NULL\r\n");
+        return 0;
+    }
+    if (response->framebuffers[0] == 0) {
+        serial_write("REA OS: first framebuffer NULL\r\n");
         return 0;
     }
 
