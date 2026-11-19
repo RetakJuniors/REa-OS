@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define CURSOR_DISPLAY_SCALE 2u
+#define CURSOR_DISPLAY_SCALE 3u
 
 int cursor_init(void);
 void cursor_move(int32_t delta_x, int32_t delta_y);

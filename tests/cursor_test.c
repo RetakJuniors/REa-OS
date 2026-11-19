@@ -141,9 +141,9 @@ int main(void)
         default_image == 0 || strcmp(default_image->name, "arrow.png") != 0 ||
         default_image->hotspot_x != 22 || default_image->hotspot_y != 1 ||
         (default_image->width + CURSOR_DISPLAY_SCALE - 1) /
-                CURSOR_DISPLAY_SCALE != 32 ||
+                CURSOR_DISPLAY_SCALE != 22 ||
         (default_image->height + CURSOR_DISPLAY_SCALE - 1) /
-                CURSOR_DISPLAY_SCALE != 32) {
+                CURSOR_DISPLAY_SCALE != 22) {
         fputs("Default cursor or hotspot is incorrect\n", stderr);
         return 1;
     }
