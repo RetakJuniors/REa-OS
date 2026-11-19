@@ -28,10 +28,12 @@ komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir.
 |   |-- console.h
 |   |-- cursor.h
 |   |-- gdt.h
+|   |-- heap.h
 |   |-- idt.h
 |   |-- keyboard.h
 |   |-- memory.h
 |   |-- mouse.h
+|   |-- paging.h
 |   |-- pic.h
 |   |-- pit.h
 |   |-- serial.h
@@ -48,6 +50,7 @@ komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir.
 |   |-- font.c
 |   |-- font.h
 |   |-- gdt.c
+|   |-- heap.c
 |   |-- idt.c
 |   |-- isr.S
 |   |-- kernel.c
@@ -55,6 +58,7 @@ komutunu calistirir ve `stat` ile CPU/RAM bilgisini verir.
 |   |-- keyboard_layout.c
 |   |-- memory.c
 |   |-- mouse.c
+|   |-- paging.c
 |   |-- pic.c
 |   |-- pit.c
 |   |-- serial.c
@@ -84,6 +88,8 @@ ile secilir; secenekler ayri derleme klasorlerinde tutulur.
 |---|---|
 | `src/kernel.c` | GDT, IDT, PIC, PIT, RAM yoneticisi ve fareyi baslatir; ana dongude klavye/fare verisini isler. |
 | `src/gdt.c` | Kernel kod/veri bolumlerini, TSS'yi ve double-fault yiginini kurar. |
+| `src/paging.c` | Limine'in etkin 4/5 seviyeli sayfa tablolarinda 4 KiB eslemeleri olusturur, kaldirir ve cevirir. |
+| `src/heap.c` | Sayfa ayiricidan heap sayfalari alir; `kmalloc`/`kfree` ile bloklari boler ve birlestirir. |
 | `src/idt.c` | 256 IDT girisini kurar, istisnalari raporlar ve IRQ'lari ilgili surucuye yollar. |
 | `src/isr.S` | Istisna/IRQ girislerini, yazmac kaydetme-kurtarmayi ve GDT'yi yukleme kodunu saglar. |
 | `src/pic.c` | 8259 PIC'i 32-47 vektorlerine tasir, IRQ maskelerini ve EOI sinyallerini yonetir. |
@@ -112,8 +118,9 @@ ile secilir; secenekler ayri derleme klasorlerinde tutulur.
 
 ### Onemli kod akisi
 
-1. `kmain()` framebuffer'i, memory map tabanli sayfa yoneticisini, GDT/TSS,
-   IDT, PIC ve PIT'i baslatir; PS/2 fareyi i8042 yardimci portundan hazirlar.
+1. `kmain()` framebuffer'i, memory map tabanli fiziksel sayfa yoneticisini,
+   etkin paging yoneticisini, kernel heap'ini, GDT/TSS, IDT, PIC ve PIT'i
+   baslatir; PS/2 fareyi i8042 yardimci portundan hazirlar.
 2. IRQ1 ve IRQ12 isleyicileri yalnizca gelen byte'i halka tamponuna koyup EOI
    gonderir. Tus/fare paketi cozme, komut ve cizim ana dongude yapilir.
 3. Girdi tamponlari bossa cekirdek kesmeleri acip `hlt` ile uyur. PIT'in IRQ0
@@ -149,6 +156,14 @@ CPU istisnalari (0-31) istisna adini, hata kodunu ve RIP degerini ekrana ve
 COM1'e yazar, sonra cekirdegi durdurur. Double fault ayri bir TSS/IST yigininda
 islenir. PIC, IRQ0-15'i 32-47 vektorlerine tasir; bu adimda PIT, klavye ve fare
 kesmeleri kullanilir.
+
+Limine cekirdegi uzun modda ve paging acik olarak baslatir. Paging modulu mevcut
+CR3 sayfa tablolarini korur; 4 veya 5 seviyeli tablolar uzerinde yeni 4 KiB
+eslemeleri ekler/siler ve sanal adresi fiziksel adrese cevirebilir. Kernel heap'i
+`0xffffc00000000000` sanal adresinden baslar, ihtiyac oldukca fiziksel sayfa
+ayirir ve en fazla 16 MiB buyur. Ornek API: `kmalloc(128)` ve `kfree(ptr)`.
+Ayirici tek cekirdekli su anki kullanim icindir; eszamanli cok cekirdekli
+kullanim icin kilit eklenmesi gerekir.
 
 RAM toplami Limine memory map'indeki tam sayfa hizasina alinmis `usable`
 bolgelerden hesaplanir. Ayiricinin bitmap'i icin kullanilan sayfalar da
@@ -291,6 +306,7 @@ icin VirtualBox Host tusunu (varsayilan olarak sag Ctrl) kullanin.
 | Fare oku hareket etmiyor | VirtualBox penceresine tiklayip fareyi yakalayin; i8042 uyumlu PS/2 fare aygitinin etkin oldugunu kontrol edin. Seri cikti `PS/2 mouse initialization failed` ise VM'yi kapatip yeniden baslatin. |
 | Klavye/fare girdisi kesildi | Seri portta `IDT loaded`, `PIC remapped` ve `PIT started` satirlarini arayin; bu altyapi baslatilmadan IRQ girdisi calismaz. |
 | Istisna ekrani gorunuyor | Seri porttaki istisna adini, hata kodunu ve RIP'i kaydedin; cekirdek bilerek `hlt` durumunda durur. |
+| Heap veya sanal esleme baslatilamadi | Seri porttaki `paging manager`/`kernel heap` hata satirini kontrol edin; sayfa ayiricisi ve Limine HHDM yaniti gerekli. |
 | `assets/cursors` icinde PNG yok | PNG gorsellerini bu klasore koyup `python3 tools/png2c.py` komutunu yeniden calistirin. |
 | PNG disi cursor formati uyarisi | Betik yalnizca PNG okur; AI, EPS, JPEG, SVG, CUR veya ICO dosyalari tabloya alinmaz. PNG surumlerini ekleyin. |
 | PNG alpha/boyut uyarisi | Saydamlik kanali olmayan gorsel opak olur. 64x64'ten buyuk gorseller calismaya devam eder ancak uyarilir. |

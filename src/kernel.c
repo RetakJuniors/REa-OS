@@ -1,11 +1,13 @@
 #include "console.h"
 #include "boot.h"
 #include "gdt.h"
+#include "heap.h"
 #include "idt.h"
 #include "keyboard.h"
 #include "memory.h"
 #include "mouse.h"
 #include "pic.h"
+#include "paging.h"
 #include "pit.h"
 #include "shell.h"
 #include "serial.h"
@@ -20,9 +22,21 @@ void kmain(void)
 
     const struct limine_memmap_response *memory_map;
     uint64_t hhdm_offset;
-    if (boot_get_memory_map(&memory_map, &hhdm_offset) &&
-        !memory_init(memory_map, hhdm_offset)) {
-        serial_write("REA OS: physical memory manager init failed\r\n");
+    int memory_ready = 0;
+    if (boot_get_memory_map(&memory_map, &hhdm_offset)) {
+        memory_ready = memory_init(memory_map, hhdm_offset);
+        if (!memory_ready) {
+            serial_write("REA OS: physical memory manager init failed\r\n");
+        }
+    }
+    if (memory_ready) {
+        if (!paging_init(hhdm_offset)) {
+            serial_write("REA OS: paging manager init failed\r\n");
+        } else if (!heap_init()) {
+            serial_write("REA OS: kernel heap init failed\r\n");
+        } else {
+            serial_write("REA OS: kernel heap ready\r\n");
+        }
     }
 
     gdt_init();

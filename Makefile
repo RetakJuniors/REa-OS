@@ -30,9 +30,10 @@ CFLAGS := -std=gnu11 -O2 -Wall -Wextra -Werror \
 LDFLAGS := -nostdlib -static -no-pie -Wl,--build-id=none \
 	-Wl,-T,linker.ld -Wl,-z,max-page-size=0x1000
 SOURCES := src/boot.c src/console.c src/cursor.c src/cursor_data.c \
-	src/font.c src/gdt.c src/idt.c src/kernel.c src/mouse.c \
+	src/font.c src/gdt.c src/heap.c src/idt.c src/kernel.c src/mouse.c \
 	src/keyboard.c src/keyboard_layout.c src/memory.c src/serial.c \
-	src/pic.c src/pit.c src/shell.c src/stat.c src/timer.c src/util.c
+	src/paging.c src/pic.c src/pit.c src/shell.c src/stat.c src/timer.c \
+	src/util.c
 OBJECTS := $(SOURCES:src/%.c=$(BUILD_DIR)/%.o)
 ASM_SOURCES := src/isr.S
 ASM_OBJECTS := $(ASM_SOURCES:src/%.S=$(BUILD_DIR)/%.o)
@@ -117,6 +118,9 @@ test: src/cursor_data.c | $(BUILD_DIR)
 	$(CC) -std=c11 -Wall -Wextra -Werror -Iinclude \
 		tests/memory_test.c src/memory.c -o $(BUILD_DIR)/memory_test
 	$(BUILD_DIR)/memory_test
+	$(CC) -std=c11 -Wall -Wextra -Werror -Iinclude \
+		tests/heap_test.c -o $(BUILD_DIR)/heap_test
+	$(BUILD_DIR)/heap_test
 
 clean:
 	rm -rf build rea-os.iso rea-os-us.iso
